@@ -23,10 +23,11 @@
 
 > **Agile-Ledger Pro** is the next generation of
 > [Agile-Ledger](https://github.com/nunoamorim99/agile-ledger) — same plain-Markdown ledger format, same
-> 33 commands, installed side by side under its own plugin and marketplace name. The ledger on disk is
-> **unchanged**: the folder is still `agile-ledger/` and the root marker is still a `Registry.md` opening
-> with `# Agile-Ledger Registry`, so Pro reads and writes an existing Agile-Ledger ledger with nothing to
-> migrate. Switching is an install, not a conversion.
+> 33 commands, shipped as the `agile-ledger-pro` plugin. The ledger on disk is **unchanged**: the folder
+> is still `agile-ledger/` and the root marker is still a `Registry.md` opening with
+> `# Agile-Ledger Registry`, so Pro reads and writes an existing Agile-Ledger ledger with nothing to
+> migrate. Switching is an install, not a conversion — see [Install](#install) if you already have the
+> original marketplace added.
 
 ---
 
@@ -180,19 +181,22 @@ First register the marketplace (once per machine), then install at the scope you
 ```
 
 > Two different names are in play here, and mixing them up is the usual cause of a failed install:
-> `nunoamorim99/agile-ledger-pro` is the **GitHub `owner/repo`**, while `@nunoamorim99-pro` is the
+> `nunoamorim99/agile-ledger-pro` is the **GitHub `owner/repo`**, while `@nunoamorim99` is the
 > **marketplace name** — the `name` field in `.claude-plugin/marketplace.json`. The install format is
-> always `<plugin-name>@<marketplace-name>`, i.e. `agile-ledger-pro@nunoamorim99-pro`. The Pro marketplace
-> is deliberately named `nunoamorim99-pro`, not `nunoamorim99`, so it can be added alongside the
-> original Agile-Ledger marketplace instead of colliding with it.
+> always `<plugin-name>@<marketplace-name>`, i.e. `agile-ledger-pro@nunoamorim99`. The marketplace name
+> is the author handle, so every skill installs as `<skill>@nunoamorim99`.
+
+> **Already have the original Agile-Ledger marketplace added?** Both repositories publish a marketplace
+> named `nunoamorim99`, so Claude Code treats them as the same one and only the first registered wins.
+> Remove the old one first — `/plugin marketplace remove nunoamorim99` — then add this one.
 
 ### Scopes
 
 | Scope | Who gets it | How |
 |---|---|---|
-| **User** (default) | just you, all your projects | `claude plugin install agile-ledger-pro@nunoamorim99-pro --scope user` |
+| **User** (default) | just you, all your projects | `claude plugin install agile-ledger-pro@nunoamorim99 --scope user` |
 | **Project** | everyone who opens the ledger repo | commit a `.claude/settings.json` (below) |
-| **Local** | just you, this repo only (gitignored) | `claude plugin install agile-ledger-pro@nunoamorim99-pro --scope local` |
+| **Local** | just you, this repo only (gitignored) | `claude plugin install agile-ledger-pro@nunoamorim99 --scope local` |
 
 Or run `/plugin` → **Discover** → select **agile-ledger-pro** → choose a scope in the UI.
 
@@ -206,12 +210,12 @@ install at user scope instead:
 ```json
 {
   "extraKnownMarketplaces": {
-    "nunoamorim99-pro": {
+    "nunoamorim99": {
       "source": { "source": "github", "repo": "nunoamorim99/agile-ledger-pro" }
     }
   },
   "enabledPlugins": {
-    "agile-ledger-pro@nunoamorim99-pro": true
+    "agile-ledger-pro@nunoamorim99": true
   }
 }
 ```

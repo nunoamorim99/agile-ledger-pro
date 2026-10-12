@@ -47,7 +47,7 @@ jobs:
             **Claude Code — marketplace (recommended)**
             ```
             /plugin marketplace add nunoamorim99/agile-ledger-pro
-            /plugin install agile-ledger-pro@nunoamorim99-pro
+            /plugin install agile-ledger-pro@nunoamorim99
             ```
 
             **Claude Code — manual, no marketplace**

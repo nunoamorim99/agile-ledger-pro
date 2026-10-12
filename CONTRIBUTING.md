@@ -8,7 +8,7 @@ That single directory feeds all three install paths:
 
 | Install path | How it gets the files |
 |---|---|
-| Marketplace (`/plugin install agile-ledger-pro@nunoamorim99-pro`) | Served directly from `plugins/agile-ledger-pro/` |
+| Marketplace (`/plugin install agile-ledger-pro@nunoamorim99`) | Served directly from `plugins/agile-ledger-pro/` |
 | Manual `.claude/` drop-in | `agile-ledger-pro-<version>.zip`, built from it on release |
 | Claude.ai web/desktop | `agile-ledger-pro-skill-<version>.zip`, built from it on release |
 

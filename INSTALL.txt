@@ -31,6 +31,6 @@ Prefer automatic updates? Install via the marketplace instead and you get new ve
 without re-downloading:
 
   /plugin marketplace add nunoamorim99/agile-ledger-pro
-  /plugin install agile-ledger-pro@nunoamorim99-pro
+  /plugin install agile-ledger-pro@nunoamorim99
 
 Latest bundles: https://github.com/nunoamorim99/agile-ledger-pro/releases/latest
