@@ -1,0 +1,62 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Plugin manifests are valid JSON
+        run: |
+          for f in .claude-plugin/marketplace.json plugins/agile-ledger/.claude-plugin/plugin.json; do
+            echo "checking $f"
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"
+          done
+
+      - name: Marketplace entry resolves to a real plugin
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          mk = json.load(open('.claude-plugin/marketplace.json'))
+          errors = []
+
+          for entry in mk['plugins']:
+              src = os.path.normpath(entry['source'])
+              if not os.path.isdir(src):
+                  errors.append(f"source does not exist: {entry['source']}")
+                  continue
+
+              manifest = os.path.join(src, '.claude-plugin', 'plugin.json')
+              if not os.path.isfile(manifest):
+                  errors.append(f"missing {manifest}")
+                  continue
+
+              pj = json.load(open(manifest))
+              if pj['name'] != entry['name']:
+                  errors.append(f"name mismatch: marketplace={entry['name']} plugin.json={pj['name']}")
+              if pj.get('version') != entry.get('version'):
+                  errors.append(f"version mismatch for {entry['name']}: "
+                                f"marketplace={entry.get('version')} plugin.json={pj.get('version')}")
+
+              for required in ('commands', 'skills/agile-ledger/SKILL.md'):
+                  if not os.path.exists(os.path.join(src, required)):
+                      errors.append(f"{entry['name']}: missing {required}")
+
+              print(f"OK  {entry['name']}@{mk['name']}  ->  {entry['source']}")
+
+          if errors:
+              print("\nFAILED:", file=sys.stderr)
+              for e in errors:
+                  print(f"  - {e}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Install bundles build and contain the right files
+        run: python3 scripts/build_bundles.py --check

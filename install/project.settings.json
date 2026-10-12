@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "nunoamorim99": {
+      "source": { "source": "github", "repo": "nunoamorim99/agile-ledger" }
+    }
+  },
+  "enabledPlugins": {
+    "agile-ledger@nunoamorim99": true
+  }
+}
