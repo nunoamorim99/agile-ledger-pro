@@ -1,4 +1,0 @@
----
-description: (Ledger) Detect new repositories locally and on the GitHub org, propose clone + register
----
-Using the **Agile-Ledger Workspace** skill, discover repositories. (1) Scan locally for `.git` directories under the workspace root (the directory holding the ledger repo and the code repos). (2) Scan the org via the user's existing `gh` auth (`gh repo list <org>` — read-only; never handle tokens). (3) Diff against the ledger repo's `Registry.md` and classify each repo as new / known / local-only, applying the `exclude` filters (still list excluded ones, marked). (4) Report the groups. For **new** repos, **propose** `git clone` into `clone_target` then `/register-repo`, and **wait for explicit confirmation before cloning anything**. After confirmed clones, add rows to the Registry (never overwrite existing rows).

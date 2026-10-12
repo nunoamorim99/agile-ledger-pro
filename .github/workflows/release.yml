@@ -3,9 +3,9 @@ name: release
 # Publishes the downloadable install bundles.
 #
 # Tag a version to cut a release:
-#   git tag v1.7.0 && git push origin v1.7.0
+#   git tag v1.0.1 && git push origin v1.0.1
 #
-# The tag must match the version in plugins/agile-ledger/.claude-plugin/plugin.json,
+# The tag must match the version in plugins/agile-ledger-pro/.claude-plugin/plugin.json,
 # so the Releases page can never advertise a version the plugin doesn't declare.
 
 on:
@@ -26,7 +26,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          MANIFEST=$(python3 -c "import json;print(json.load(open('plugins/agile-ledger/.claude-plugin/plugin.json'))['version'])")
+          MANIFEST=$(python3 -c "import json;print(json.load(open('plugins/agile-ledger-pro/.claude-plugin/plugin.json'))['version'])")
           echo "tag=$TAG  plugin.json=$MANIFEST"
           if [ "$TAG" != "$MANIFEST" ]; then
             echo "::error::Tag v$TAG does not match plugin.json version $MANIFEST. Bump the manifests or retag."
@@ -46,15 +46,15 @@ jobs:
 
             **Claude Code — marketplace (recommended)**
             ```
-            /plugin marketplace add nunoamorim99/agile-ledger
-            /plugin install agile-ledger@nunoamorim99
+            /plugin marketplace add nunoamorim99/agile-ledger-pro
+            /plugin install agile-ledger-pro@nunoamorim99-pro
             ```
 
             **Claude Code — manual, no marketplace**
-            Download `agile-ledger-<version>.zip` below and unzip it into your project's
+            Download `agile-ledger-pro-<version>.zip` below and unzip it into your project's
             `.claude/` folder (or `~/.claude/` for every project). Restart Claude Code.
 
             **Claude.ai web or desktop**
-            Download `agile-ledger-skill-<version>.zip` below and upload it under
+            Download `agile-ledger-pro-skill-<version>.zip` below and upload it under
             *Customize → Skills*. (Slash commands are Claude Code only; on the web the
             skill is driven by natural language.)

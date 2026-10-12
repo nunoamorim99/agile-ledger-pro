@@ -2,17 +2,17 @@
 
 ## Repository layout — one source of truth
 
-**Everything lives in `plugins/agile-ledger/`. Edit only there.**
+**Everything lives in `plugins/agile-ledger-pro/`. Edit only there.**
 
 That single directory feeds all three install paths:
 
 | Install path | How it gets the files |
 |---|---|
-| Marketplace (`/plugin install agile-ledger@nunoamorim99`) | Served directly from `plugins/agile-ledger/` |
-| Manual `.claude/` drop-in | `agile-ledger-<version>.zip`, built from it on release |
-| Claude.ai web/desktop | `agile-ledger-skill-<version>.zip`, built from it on release |
+| Marketplace (`/plugin install agile-ledger-pro@nunoamorim99-pro`) | Served directly from `plugins/agile-ledger-pro/` |
+| Manual `.claude/` drop-in | `agile-ledger-pro-<version>.zip`, built from it on release |
+| Claude.ai web/desktop | `agile-ledger-pro-skill-<version>.zip`, built from it on release |
 
-A marketplace plugin's root is a hard boundary — paths above `plugins/agile-ledger/` are not copied
+A marketplace plugin's root is a hard boundary — paths above `plugins/agile-ledger-pro/` are not copied
 into the plugin cache on install — so the files must physically live inside the plugin. The manual
 bundles are therefore *built* from it rather than kept as a second committed copy.
 
@@ -24,9 +24,9 @@ python3 scripts/build_bundles.py --check   # build, then assert the contents (th
 ```
 
 `dist/` is gitignored — the zips are release artifacts, never committed. The full bundle nests
-commands one level deeper than the plugin does (`commands/agile-ledger/idea.md`), because a manual
+commands one level deeper than the plugin does (`commands/agile-ledger-pro/idea.md`), because a manual
 install namespaces commands by directory while a plugin namespaces them by plugin name. Both end up
-as `/agile-ledger:idea`.
+as `/agile-ledger-pro:idea`.
 
 ## Cutting a release
 
@@ -35,7 +35,7 @@ as `/agile-ledger:idea`.
 3. Tag and push:
 
    ```sh
-   git tag v1.7.1 && git push origin v1.7.1
+   git tag v1.0.1 && git push origin v1.0.1
    ```
 
 The `release` workflow verifies the tag matches `plugin.json`, builds both bundles, and attaches them
@@ -46,7 +46,7 @@ to a GitHub Release. A mismatched tag fails the build rather than publishing a m
 The version appears in two manifests and must match in both:
 
 - `.claude-plugin/marketplace.json` — `metadata.version` and the plugin entry's `version`
-- `plugins/agile-ledger/.claude-plugin/plugin.json` — `version`
+- `plugins/agile-ledger-pro/.claude-plugin/plugin.json` — `version`
 
 CI verifies that the marketplace entry and `plugin.json` agree on both `name` and `version`.
 
@@ -57,7 +57,7 @@ request:
 
 1. Both plugin manifests parse as JSON.
 2. The marketplace entry resolves to a real plugin directory, names and versions agree, and the
-   required `commands/` and `skills/agile-ledger/SKILL.md` are present.
+   required `commands/` and `skills/agile-ledger-pro/SKILL.md` are present.
 3. Both install bundles build and contain the files each one is supposed to ship.
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on a `v*` tag and publishes the
@@ -66,7 +66,7 @@ bundles to GitHub Releases.
 ## Ledger file conventions
 
 The shapes the skill scaffolds and maintains are specified in
-[`entry-templates.md`](plugins/agile-ledger/skills/agile-ledger/references/entry-templates.md).
+[`entry-templates.md`](plugins/agile-ledger-pro/skills/agile-ledger-pro/references/entry-templates.md).
 Two rules are easy to miss when adding a command:
 
 - **Overview tables are derived, never hand-typed.** Any command that changes an item's state,

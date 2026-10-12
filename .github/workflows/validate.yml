@@ -14,7 +14,7 @@ jobs:
 
       - name: Plugin manifests are valid JSON
         run: |
-          for f in .claude-plugin/marketplace.json plugins/agile-ledger/.claude-plugin/plugin.json; do
+          for f in .claude-plugin/marketplace.json plugins/agile-ledger-pro/.claude-plugin/plugin.json; do
             echo "checking $f"
             python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"
           done
@@ -45,7 +45,7 @@ jobs:
                   errors.append(f"version mismatch for {entry['name']}: "
                                 f"marketplace={entry.get('version')} plugin.json={pj.get('version')}")
 
-              for required in ('commands', 'skills/agile-ledger/SKILL.md'):
+              for required in ('commands', 'skills/agile-ledger-pro/SKILL.md'):
                   if not os.path.exists(os.path.join(src, required)):
                       errors.append(f"{entry['name']}: missing {required}")
 

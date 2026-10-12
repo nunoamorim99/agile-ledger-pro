@@ -1,9 +1,9 @@
 <!-- Cover: docs/assets/cover.png  (generated with Higgsfield — see docs/assets/ASSETS.md) -->
 <p align="center">
-  <img src="docs/assets/cover.png" alt="Agile-Ledger" width="100%">
+  <img src="docs/assets/cover.png" alt="Agile-Ledger Pro" width="100%">
 </p>
 
-<h1 align="center">Agile-Ledger</h1>
+<h1 align="center">Agile-Ledger Pro</h1>
 
 <p align="center">
   <strong>Plain-Markdown Scrum &amp; Agile product management for Claude Code.</strong><br>
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-2.0-2ea44f">
+  <img alt="version" src="https://img.shields.io/badge/version-1.0-2ea44f">
   <img alt="format" src="https://img.shields.io/badge/storage-plain%20Markdown-0969da">
   <img alt="commands" src="https://img.shields.io/badge/commands-33%20%2B%20alias-6639ba">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-cf222e">
@@ -21,12 +21,21 @@
 
 ---
 
-## Why Agile-Ledger
+> **Agile-Ledger Pro** is the next generation of
+> [Agile-Ledger](https://github.com/nunoamorim99/agile-ledger) — same plain-Markdown ledger format, same
+> 33 commands, installed side by side under its own plugin and marketplace name. The ledger on disk is
+> **unchanged**: the folder is still `agile-ledger/` and the root marker is still a `Registry.md` opening
+> with `# Agile-Ledger Registry`, so Pro reads and writes an existing Agile-Ledger ledger with nothing to
+> migrate. Switching is an install, not a conversion.
+
+---
+
+## Why Agile-Ledger Pro
 
 Distributed teams on different schedules don't need another web app to log into — they need a single,
-readable source of truth. Agile-Ledger keeps your entire product management layer as plain Markdown in a
+readable source of truth. Agile-Ledger Pro keeps your entire product management layer as plain Markdown in a
 **dedicated ledger repository**: one folder per code repo, each with a backlog of epics and user stories,
-sprints with velocity, a bug tracker, releases, and a roadmap. **GitHub holds the code; Agile-Ledger
+sprints with velocity, a bug tracker, releases, and a roadmap. **GitHub holds the code; Agile-Ledger Pro
 holds the "why", joined by the user-story ID** through every branch, commit, and PR.
 
 - **Your code repos stay clean.** No PM folder in the codebase: a backlog edit never lands on a
@@ -46,7 +55,7 @@ holds the "why", joined by the user-story ID** through every branch, commit, and
 ## The flow
 
 <p align="center">
-  <img src="docs/assets/flow.png" alt="How work flows through Agile-Ledger" width="100%">
+  <img src="docs/assets/flow.png" alt="How work flows through Agile-Ledger Pro" width="100%">
 </p>
 
 <details>
@@ -87,7 +96,7 @@ folder across verbatim and then offers to clean the code repo on a branch.
 ## The eight files it manages (per repo)
 
 <p align="center">
-  <img src="docs/assets/files.png" alt="The eight files Agile-Ledger manages" width="100%">
+  <img src="docs/assets/files.png" alt="The eight files Agile-Ledger Pro manages" width="100%">
 </p>
 
 <details>
@@ -142,8 +151,8 @@ scale, your name, and whether the skill may run `git` in `Definitions.md`.
 | ⚫ **Ledger &amp; repos** | `/init-ledger` · `/register-repo` · `/migrate-ledger` · `/ledger-commit` · `/discover-repos` · `/workspace-sync` · `/workspace-status` |
 
 Run **`/guide`** in any session for the command-to-file map and a one-glance state summary. The full
-reference lives in [`plugins/agile-ledger/README.md`](plugins/agile-ledger/README.md), and a printable
-one-page cheat sheet ships as `Agile-Ledger-cheatsheet.pdf`.
+reference lives in [`plugins/agile-ledger-pro/README.md`](plugins/agile-ledger-pro/README.md), and a printable
+one-page cheat sheet ships as `Agile-Ledger-Pro-cheatsheet.pdf`.
 
 ---
 
@@ -167,24 +176,25 @@ one-page cheat sheet ships as `Agile-Ledger-cheatsheet.pdf`.
 First register the marketplace (once per machine), then install at the scope you want:
 
 ```
-/plugin marketplace add nunoamorim99/agile-ledger
+/plugin marketplace add nunoamorim99/agile-ledger-pro
 ```
 
 > Two different names are in play here, and mixing them up is the usual cause of a failed install:
-> `nunoamorim99/agile-ledger` is the **GitHub `owner/repo`**, while `@nunoamorim99` is the **marketplace
-> name** — the `name` field in `.claude-plugin/marketplace.json`. The install format is always
-> `<plugin-name>@<marketplace-name>`, i.e. `agile-ledger@nunoamorim99`. The marketplace name here is the
-> author handle so every skill installs as `<skill>@nunoamorim99`.
+> `nunoamorim99/agile-ledger-pro` is the **GitHub `owner/repo`**, while `@nunoamorim99-pro` is the
+> **marketplace name** — the `name` field in `.claude-plugin/marketplace.json`. The install format is
+> always `<plugin-name>@<marketplace-name>`, i.e. `agile-ledger-pro@nunoamorim99-pro`. The Pro marketplace
+> is deliberately named `nunoamorim99-pro`, not `nunoamorim99`, so it can be added alongside the
+> original Agile-Ledger marketplace instead of colliding with it.
 
 ### Scopes
 
 | Scope | Who gets it | How |
 |---|---|---|
-| **User** (default) | just you, all your projects | `claude plugin install agile-ledger@nunoamorim99 --scope user` |
+| **User** (default) | just you, all your projects | `claude plugin install agile-ledger-pro@nunoamorim99-pro --scope user` |
 | **Project** | everyone who opens the ledger repo | commit a `.claude/settings.json` (below) |
-| **Local** | just you, this repo only (gitignored) | `claude plugin install agile-ledger@nunoamorim99 --scope local` |
+| **Local** | just you, this repo only (gitignored) | `claude plugin install agile-ledger-pro@nunoamorim99-pro --scope local` |
 
-Or run `/plugin` → **Discover** → select **agile-ledger** → choose a scope in the UI.
+Or run `/plugin` → **Discover** → select **agile-ledger-pro** → choose a scope in the UI.
 
 ### Project scope — the whole team gets it
 
@@ -196,12 +206,12 @@ install at user scope instead:
 ```json
 {
   "extraKnownMarketplaces": {
-    "nunoamorim99": {
-      "source": { "source": "github", "repo": "nunoamorim99/agile-ledger" }
+    "nunoamorim99-pro": {
+      "source": { "source": "github", "repo": "nunoamorim99/agile-ledger-pro" }
     }
   },
   "enabledPlugins": {
-    "agile-ledger@nunoamorim99": true
+    "agile-ledger-pro@nunoamorim99-pro": true
   }
 }
 ```
@@ -218,22 +228,22 @@ marketplace and enable the plugin — no manual setup, and updates are a normal 
 
 ### Other ways
 
-Every download below is on the **[latest release](https://github.com/nunoamorim99/agile-ledger/releases/latest)** page — you don't need to clone the repo or hunt for folders.
+Every download below is on the **[latest release](https://github.com/nunoamorim99/agile-ledger-pro/releases/latest)** page — you don't need to clone the repo or hunt for folders.
 
 | You want | Download | Then |
 |---|---|---|
-| Claude Code without a marketplace (offline, corporate policy, or just to read the files first) | `agile-ledger-<version>.zip` | Unzip into your project's `.claude/` folder — or `~/.claude/` for every project. Restart Claude Code. |
-| Claude.ai **web or desktop** | `agile-ledger-skill-<version>.zip` | Upload via *Customize → Skills*. |
+| Claude Code without a marketplace (offline, corporate policy, or just to read the files first) | `agile-ledger-pro-<version>.zip` | Unzip into your project's `.claude/` folder — or `~/.claude/` for every project. Restart Claude Code. |
+| Claude.ai **web or desktop** | `agile-ledger-pro-skill-<version>.zip` | Upload via *Customize → Skills*. |
 
-- **One session, no install:** `claude --plugin-dir ./plugins/agile-ledger`
+- **One session, no install:** `claude --plugin-dir ./plugins/agile-ledger-pro`
 
 > Slash commands are a Claude Code feature. On Claude.ai web/desktop the skill still works, driven by
-> natural language ("add a story for…", "plan the next sprint") rather than `/agile-ledger:…`.
+> natural language ("add a story for…", "plan the next sprint") rather than `/agile-ledger-pro:…`.
 >
 > Manual installs don't auto-update — grab the newer zip when a release ships. The marketplace path
 > updates itself, which is why it's the recommended one.
 
-Installed via marketplace, commands are namespaced (`/agile-ledger:idea`). After installing, restart
+Installed via marketplace, commands are namespaced (`/agile-ledger-pro:idea`). After installing, restart
 Claude Code (or `/reload-plugins`) so the skills load.
 
 ---
@@ -280,25 +290,25 @@ are always *proposed* and confirmed first.
 ## Repository layout
 
 ```
-agile-ledger/
-├── .claude-plugin/marketplace.json      # marketplace catalog
-├── plugins/agile-ledger/                # ← the plugin: single source of truth
-│   ├── .claude-plugin/plugin.json       # plugin manifest
-│   ├── commands/                        # 33 slash commands (+ /standup alias)
+agile-ledger-pro/
+├── .claude-plugin/marketplace.json          # marketplace catalog
+├── plugins/agile-ledger-pro/                # ← the plugin: single source of truth
+│   ├── .claude-plugin/plugin.json           # plugin manifest
+│   ├── commands/                            # 33 slash commands (+ /standup alias)
 │   └── skills/
-│       ├── agile-ledger/                # core skill — SKILL.md + references/ (10 templates)
-│       └── agile-ledger-workspace/      # owns the ledger repo, the Registry, and cross-repo sweeps
-├── scripts/build_bundles.py             # builds the release zips from the plugin
-├── install/                             # project-scope settings.json for teams
-├── docs/assets/                         # README images (cover, group banners)
-├── Agile-Ledger-cheatsheet.pdf
-├── Agile-Ledger-skill-spec.md           # full design rationale
+│       ├── agile-ledger-pro/                # core skill — SKILL.md + references/ (10 templates)
+│       └── agile-ledger-pro-workspace/      # owns the ledger repo, the Registry, and cross-repo sweeps
+├── scripts/build_bundles.py                 # builds the release zips from the plugin
+├── install/                                 # project-scope settings.json for teams
+├── docs/assets/                             # README images (cover, group banners)
+├── Agile-Ledger-Pro-cheatsheet.pdf
+├── Agile-Ledger-Pro-skill-spec.md           # full design rationale
 ├── README.md
 └── LICENSE
 ```
 
-Everything ships from `plugins/agile-ledger/`. The marketplace serves it directly, and the downloadable
-zips on the [releases page](https://github.com/nunoamorim99/agile-ledger/releases/latest) are built from
+Everything ships from `plugins/agile-ledger-pro/`. The marketplace serves it directly, and the downloadable
+zips on the [releases page](https://github.com/nunoamorim99/agile-ledger-pro/releases/latest) are built from
 it on each tag — so there is only ever one copy to edit. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License

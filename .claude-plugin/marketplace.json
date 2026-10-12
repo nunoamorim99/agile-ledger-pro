@@ -1,16 +1,16 @@
 {
-  "name": "nunoamorim99",
+  "name": "nunoamorim99-pro",
   "owner": { "name": "Nuno Amorim", "email": "nuno22amorim@gmail.com", "url": "https://github.com/nunoamorim99" },
   "metadata": {
-    "description": "Marketplace for Agile-Ledger — a plain-Markdown Scrum/Agile product-management plugin for Claude Code.",
-    "version": "2.0.0"
+    "description": "Marketplace for Agile-Ledger Pro — a plain-Markdown Scrum/Agile product-management plugin for Claude Code.",
+    "version": "1.0.0"
   },
   "plugins": [
     {
-      "name": "agile-ledger",
-      "source": "./plugins/agile-ledger",
+      "name": "agile-ledger-pro",
+      "source": "./plugins/agile-ledger-pro",
       "description": "Manage a Scrum backlog of Epics and User Stories, plan and run sprints, drive a board, track velocity, cut Major.Minor releases, and keep GitHub branches/commits/PRs traceable to stories — all from slash commands, in a ledger repo that keeps your code repos clean.",
-      "version": "2.0.0",
+      "version": "1.0.0",
       "author": { "name": "Nuno Amorim", "email": "nuno22amorim@gmail.com", "url": "https://github.com/nunoamorim99" },
       "category": "product-management",
       "tags": ["scrum", "agile", "backlog", "sprint", "markdown"]

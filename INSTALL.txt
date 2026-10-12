@@ -1,16 +1,16 @@
-Agile-Ledger — installing
+Agile-Ledger Pro — installing
 
 You are reading this inside the drop-in bundle, so you already have the files you need.
 
 FULL install (skills + slash commands)
   Unzip this bundle into your project's  .claude/  folder, so you end up with:
-    .claude/skills/agile-ledger/            (and agile-ledger-workspace/)
-    .claude/commands/agile-ledger/*.md
+    .claude/skills/agile-ledger-pro/            (and agile-ledger-pro-workspace/)
+    .claude/commands/agile-ledger-pro/*.md
   Use ~/.claude/ instead to install for all your projects.
-  Restart Claude Code (or run /reload-plugins). Commands are namespaced: /agile-ledger:idea
+  Restart Claude Code (or run /reload-plugins). Commands are namespaced: /agile-ledger-pro:idea
 
 SKILL ONLY (no slash commands, driven by natural language)
-  Copy just the  skills/agile-ledger/  folder into  .claude/skills/
+  Copy just the  skills/agile-ledger-pro/  folder into  .claude/skills/
   (the skill auto-triggers when you ask for backlog/sprint work).
 
 FIRST RUN
@@ -22,11 +22,15 @@ FIRST RUN
   From inside a code repo the skill walks up to the sibling ledger repo and matches the
   project by its git remote, so there is nothing to configure.
 
+  Already using Agile-Ledger? Pro reads the same ledger. The folder is still
+  agile-ledger/ and the root marker is still a Registry.md opening with
+  "# Agile-Ledger Registry" — point Pro at it and carry on, nothing to migrate.
+
 ---
 Prefer automatic updates? Install via the marketplace instead and you get new versions
 without re-downloading:
 
-  /plugin marketplace add nunoamorim99/agile-ledger
-  /plugin install agile-ledger@nunoamorim99
+  /plugin marketplace add nunoamorim99/agile-ledger-pro
+  /plugin install agile-ledger-pro@nunoamorim99-pro
 
-Latest bundles: https://github.com/nunoamorim99/agile-ledger/releases/latest
+Latest bundles: https://github.com/nunoamorim99/agile-ledger-pro/releases/latest

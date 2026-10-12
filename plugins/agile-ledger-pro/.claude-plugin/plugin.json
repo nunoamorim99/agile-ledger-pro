@@ -1,0 +1,10 @@
+{
+  "name": "agile-ledger-pro",
+  "version": "1.0.0",
+  "description": "Plain-Markdown Scrum/Agile product management for Claude Code — backlog, sprints, board, velocity, releases, and GitHub traceability from slash commands. The ledger lives in its own repo, one folder per project, so code repos stay clean.",
+  "author": { "name": "Nuno Amorim", "email": "nuno22amorim@gmail.com", "url": "https://github.com/nunoamorim99" },
+  "homepage": "https://github.com/nunoamorim99/agile-ledger-pro",
+  "repository": "https://github.com/nunoamorim99/agile-ledger-pro",
+  "license": "MIT",
+  "keywords": ["scrum","agile","product-management","backlog","sprint","user-story","epic","velocity","kanban","markdown","multi-repo","workspace","bug-tracking"]
+}
