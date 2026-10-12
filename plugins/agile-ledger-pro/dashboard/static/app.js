@@ -18,6 +18,7 @@ const state = {
   person: '',
   tab: 'overview',
   revision: 0,
+  commands: null,
 };
 
 /* ------------------------------------------------------------------ utils */
@@ -618,6 +619,108 @@ VIEWS.releases = () => {
   return wrap;
 };
 
+/* The command sheet. Descriptions come from the shipped commands/*.md
+ * frontmatter via /api/commands, so this list cannot drift from the plugin. */
+const HERE_ACTIONS = {
+  add_idea: newIdeaForm,
+  add_bug: newBugForm,
+  plan_sprint: planSprintForm,
+  close_sprint: closeSprintForm,
+  cut_release: cutReleaseForm,
+  check: runCheck,
+  commit: commitForm,
+};
+
+const ACTION_VIEW = {
+  triage_idea_to_story: 'ideas', triage_bug: 'ideas',
+  detail_story: 'stories', move_board_item: 'board', complete_item: 'board',
+};
+
+function goTo(tab) {
+  state.tab = tab;
+  location.hash = tab;
+  render();
+}
+
+function copyCommand(text) {
+  navigator.clipboard?.writeText(text).then(
+    () => toast('ok', 'Copied', text),
+    () => toast('warn', text, 'Copy it by hand — the clipboard is blocked.'));
+}
+
+VIEWS.commands = () => {
+  const wrap = el('div', {});
+  const sheet = state.commands;
+  if (!sheet) {
+    wrap.append(el('p', { class: 'empty', text: 'Loading the command sheet…' }));
+    loadCommands();
+    return wrap;
+  }
+
+  const here = sheet.groups.reduce((n, g) => n + g.commands.filter((c) => c.here).length, 0);
+  const search = el('input', { type: 'text', placeholder: 'Filter commands…',
+    'aria-label': 'Filter commands', style: 'min-width:200px' });
+  wrap.append(sectionHead('Commands', `${sheet.total} commands · ${here} usable from this page`, search));
+  wrap.append(el('p', { class: 'hint', style: 'margin:-4px 0 16px',
+    text: 'Everything Agile-Ledger Pro can do. “Here” runs on this page; “In Claude Code” means type it in the session — those read your code or your git history, or need a judgement call.' }));
+
+  const body = el('div', {});
+  const draw = (needle) => {
+    body.replaceChildren();
+    for (const group of sheet.groups) {
+      const rows = group.commands.filter((c) =>
+        !needle || (`/${c.name} ${c.description} ${c.writes}`).toLowerCase().includes(needle));
+      if (!rows.length) continue;
+
+      body.append(el('section', { class: 'section' },
+        sectionHead(group.group, group.blurb),
+        el('table', { class: 'grid' },
+          el('thead', {}, el('tr', {},
+            ['Command', 'What it does', 'Writes', 'Where'].map((h) => el('th', { text: h })))),
+          el('tbody', {}, rows.map((c) => {
+            const full = `/${c.name}${c.args ? ' ' + c.args : ''}`;
+            const run = HERE_ACTIONS[c.action];
+            const view = c.view || ACTION_VIEW[c.action];
+            return el('tr', {},
+              el('td', {},
+                el('button', { class: 'cmdbtn', type: 'button', title: 'Copy this command',
+                  onclick: () => copyCommand(full) }, full)),
+              el('td', {},
+                el('div', { text: c.description || EMPTY }),
+                c.note ? el('div', { class: 'hint', style: 'margin-top:3px', text: c.note }) : null),
+              el('td', { class: 'id', text: c.writes }),
+              el('td', {}, run
+                ? el('button', { class: 'btn small primary', type: 'button', onclick: run }, 'Do it here')
+                : view
+                  ? el('button', { class: 'btn small', type: 'button', onclick: () => goTo(view) }, 'Open tab')
+                  : badge('In Claude Code')));
+          })))));
+    }
+    if (!body.children.length) {
+      body.append(el('p', { class: 'empty', text: 'No command matches that.' }));
+    }
+  };
+
+  search.addEventListener('input', () => draw(search.value.trim().toLowerCase()));
+  draw('');
+  wrap.append(body);
+
+  if (sheet.source) {
+    wrap.append(el('p', { class: 'hint', style: 'margin-top:14px',
+      text: `Read from ${sheet.source} — this sheet is generated from the installed commands, so it always matches your version.` }));
+  }
+  return wrap;
+};
+
+async function loadCommands() {
+  try {
+    state.commands = await api('/api/commands');
+    if (state.tab === 'commands') render();
+  } catch (error) {
+    toast('err', 'Could not load the command sheet', error.message);
+  }
+}
+
 VIEWS.files = () => {
   const wrap = el('div', {});
   wrap.append(sectionHead('Ledger files', 'the Markdown this page is built from',
@@ -1020,6 +1123,7 @@ const TABS = [
   ['overview', 'Overview'], ['board', 'Board'], ['ideas', 'Inbox'],
   ['epics', 'Epics'], ['stories', 'Stories'], ['bugs', 'Bugs'],
   ['sprints', 'Sprints'], ['releases', 'Releases'], ['files', 'Files'],
+  ['commands', 'Commands'],
 ];
 
 function counts() {
@@ -1172,6 +1276,7 @@ async function boot() {
   });
 
   await loadRepo(slug);
+  loadCommands();
   setInterval(poll, 2500);
 }
 

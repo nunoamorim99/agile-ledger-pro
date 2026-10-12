@@ -48,6 +48,12 @@ Everything that only touches the ledger files is available from the page: `/idea
 the board moves (`/start-*`, `/review`, `/pr`), `/done-*`, `/close-sprint`, `/release`,
 `/ledger-check`, and `/ledger-commit` (the selected repo folder only; it never pushes).
 
+The **Commands** tab is the full sheet: every command the plugin ships, grouped by phase, with what
+it does, which file it writes, and whether it runs here or in a Claude Code session. The rows are
+generated from the installed `commands/*.md` frontmatter, so the sheet always matches your version
+rather than a copy that goes stale. Each row copies its command on click; the ones the page can do
+carry a button that opens the right form.
+
 **It never runs git in a code repo.** `/sync-main`, `/workspace-sync`, `/discover-repos`,
 `/register-repo`, `/init-ledger` and `/migrate-ledger` stay in the Claude Code session: they read
 git history, clone repositories, and propose reconstructed work that needs a human's judgement.
@@ -64,6 +70,7 @@ dashboard/
 │   ├── mdutil.py         # Markdown primitives: sections, tables, comment masking, spans
 │   ├── model.py          # the ledger's vocabulary: states, emoji, ordering
 │   ├── resolve.py        # ledger-root discovery, Registry.md and Config.md
+│   ├── commands.py       # the command sheet: grouping + descriptions read from commands/*.md
 │   ├── parse.py          # readers for the eight files (records a span per entry)
 │   ├── render.py         # writers for entries and the derived tables
 │   ├── store.py          # load, splice, rebuild derived data, write atomically
@@ -87,6 +94,11 @@ fails if the shipped templates drift from the vocabulary this code expects.
 
 The fixture is deliberately left with a few wrong hand-written totals, so
 `test_derived_tables_correct_stale_input` can prove a rebuild corrects them.
+
+`test_command_sheet_covers_every_shipped_command` fails if a command is added without being placed
+in `commands.SHEET`. It compares against the curated table rather than the rendered sheet on
+purpose: the sheet files an unknown command under "Other", so checking the rendered output would
+pass no matter what.
 
 ## Colour
 

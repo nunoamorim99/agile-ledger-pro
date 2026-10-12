@@ -27,7 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from agileledger import actions, resolve  # noqa: E402
+from agileledger import actions, commands, resolve  # noqa: E402
 from agileledger.actions import ActionError  # noqa: E402
 from agileledger.model import (BOARD_COLUMNS, BUG_STATES, FIBONACCI, LAYERS,  # noqa: E402
                                LEDGER_FILES, PRIORITIES, PRIORITY_NAME,
@@ -131,6 +131,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static(path[len("/static/"):])
             if path == "/api/workspace":
                 return self._json(self.workspace.overview())
+            if path == "/api/commands":
+                return self._json(commands.sheet(HERE, set(actions.ACTIONS)))
 
             m = re.fullmatch(r"/api/repo/([^/]+)", path)
             if m:

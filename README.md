@@ -176,8 +176,11 @@ the entries, and an edit replaces only the lines it owns, so the ledger diff sho
 The page reloads itself when the files change, so what you do here in a Claude session shows up in
 the browser a couple of seconds later.
 
-Git-touching work stays in the session on purpose: `/sync-main`, `/workspace-sync` and
-`/discover-repos` read git history and propose reconstructed work that needs your judgement.
+A **Commands** tab lists every command the plugin ships — grouped by phase, with what it does, the
+file it writes, and whether it runs on the page or in a session — generated from the installed
+command files, so it never goes stale. Git-touching work stays in the session on purpose:
+`/sync-main`, `/workspace-sync` and `/discover-repos` read git history and propose reconstructed
+work that needs your judgement.
 Details in [`plugins/agile-ledger-pro/dashboard/README.md`](plugins/agile-ledger-pro/dashboard/README.md).
 
 ---

@@ -54,7 +54,7 @@ command also takes `--repo <slug>` to act on another project.
 - `/close-sprint` — record Increment + velocity, return unfinished items to the backlog
 
 **Inspect (read-only views)**
-- `/dashboard [--port N] [--ledger PATH]` — serve the whole ledger as a local web page (read it, and apply the same updates from a form)
+- `/dashboard [--port N] [--ledger PATH]` — serve the whole ledger as a local web page (read it, apply the same updates from a form, and browse the full command sheet)
 - `/board` *(alias `/standup`)* — the async sprint snapshot
 - `/my-work [name]` — one developer's stories, AC, branch, blockers
 - `/status` — whole-product snapshot (states, sprint, velocity, open bugs, unreleased, version)

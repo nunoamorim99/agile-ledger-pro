@@ -414,6 +414,66 @@ def test_markdown_helpers():
     equal(rows, [["1", "2"]], "table rows")
 
 
+def test_command_sheet_covers_every_shipped_command():
+    """The sheet is generated from commands/*.md, so it cannot drift silently."""
+    from agileledger import commands as cmd
+
+    dashboard = HERE.parent
+    folder = cmd._commands_dir(dashboard)
+    if folder is None:
+        return                      # running from a copy without the commands dir
+
+    on_disk = {p.stem for p in folder.glob("*.md")}
+    sheet = cmd.sheet(dashboard, set(actions.ACTIONS))
+
+    # Compare against the *curated* table, not the rendered sheet: the sheet
+    # files an unknown command under "Other", so checking the rendered output
+    # would pass no matter what and the drift would ship unnoticed.
+    curated = {c["name"] for g in cmd.SHEET for c in g["commands"]}
+    equal(curated - on_disk, set(), "the sheet lists no command that is not shipped")
+    equal(on_disk - curated, set(), "every shipped command is placed in a group "
+                                    "(add it to commands.SHEET, do not rely on 'Other')")
+    equal(sheet["total"], len(on_disk), "sheet total matches the command count")
+
+    missing = [c["name"] for g in sheet["groups"] for c in g["commands"]
+               if not c["description"]]
+    equal(missing, [], "every row carries the description from its command file")
+
+    # A row claiming to run here must name an action this build actually has.
+    for group in sheet["groups"]:
+        for row in group["commands"]:
+            if row["action"]:
+                check(row["action"] in actions.ACTIONS,
+                      f"/{row['name']} points at a real action ({row['action']})")
+
+    # The git-touching commands must never claim they run on the page.
+    for name in ("sync-main", "workspace-sync", "discover-repos", "register-repo",
+                 "init-ledger", "migrate-ledger"):
+        row = next(c for g in sheet["groups"] for c in g["commands"] if c["name"] == name)
+        check(row["action"] is None and not row["view"],
+              f"/{name} is marked session-only")
+        check(bool(row["note"]), f"/{name} says why it is session-only")
+
+
+def test_command_sheet_finds_the_bundle_layout():
+    """The manual bundle nests commands one level deeper than the plugin does."""
+    from agileledger import commands as cmd
+
+    tmp = Path(tempfile.mkdtemp(prefix="agile-ledger-layout-"))
+    try:
+        for relative in ("commands/agile-ledger-pro", "dashboard"):
+            (tmp / relative).mkdir(parents=True)
+        (tmp / "commands" / "agile-ledger-pro" / "idea.md").write_text(
+            "---\ndescription: Capture a raw idea\n---\nbody\n", encoding="utf-8")
+        found = cmd._commands_dir(tmp / "dashboard")
+        equal(found, tmp / "commands" / "agile-ledger-pro",
+              "the bundle's nested commands folder is found")
+        equal(cmd._descriptions(found), {"idea": "Capture a raw idea"},
+              "frontmatter descriptions are read")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_templates_agree_with_the_model():
     """The shipped templates must still use the vocabulary this code expects."""
     references = HERE.parent.parent / "skills" / "agile-ledger-pro" / "references"
