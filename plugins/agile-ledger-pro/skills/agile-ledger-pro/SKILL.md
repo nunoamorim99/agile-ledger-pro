@@ -408,6 +408,14 @@ listed here because they gate everything else.
 - **`/changelog`** — Derive user-facing release notes / `CHANGELOG.md` from the version history, grouped
   into **Added / Changed** (from stories & epics) and **Fixed** (from bugs). Derived only — never edits
   the ledger.
+- **`/dashboard [--port N] [--ledger PATH] [--no-browser]`** — Serve the whole ledger as a local web
+  page: the board, the backlog, each epic's progress, velocity over time, open bugs, releases,
+  grouped by project. It also applies the ledger-only commands from a form (capture, triage, detail,
+  plan, the board moves, done, release, `/ledger-commit`), under the same rules written here —
+  nothing deleted, no ID reused, derived tables rebuilt from the entries, and only the lines an edit
+  owns rewritten. It never runs git in a code repo, so `/sync-main`, `/workspace-sync`,
+  `/discover-repos` and the setup commands stay in this session. Python 3.8+, standard library only,
+  bound to `127.0.0.1`. The server lives in the plugin at `dashboard/serve.py`.
 - **`/status`** — The whole picture: counts by shaping state and board column, current sprint progress,
   velocity trend, blocked items, **open bugs by severity/priority**, Increment (unreleased) contents,
   latest version.

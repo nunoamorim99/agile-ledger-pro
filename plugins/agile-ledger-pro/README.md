@@ -54,6 +54,7 @@ command also takes `--repo <slug>` to act on another project.
 - `/close-sprint` — record Increment + velocity, return unfinished items to the backlog
 
 **Inspect (read-only views)**
+- `/dashboard [--port N] [--ledger PATH]` — serve the whole ledger as a local web page (read it, and apply the same updates from a form)
 - `/board` *(alias `/standup`)* — the async sprint snapshot
 - `/my-work [name]` — one developer's stories, AC, branch, blockers
 - `/status` — whole-product snapshot (states, sprint, velocity, open bugs, unreleased, version)
@@ -88,5 +89,7 @@ Per repo, inside `<ledger-repo>/<repo-slug>/`: `Ideas.md` · `Epic-Backlog.md` �
 `Definitions.md` to configure language, estimation scale, your name, and git execution in the code repo.
 At the ledger root: `Registry.md` (the repo map, and the marker that identifies a ledger) and `Config.md`
 (org, clone target, and the ledger repo's own commit/push policy).
+
+The dashboard ships in `dashboard/` and needs Python 3.8+ and nothing else; it binds `127.0.0.1` only. See [`dashboard/README.md`](dashboard/README.md) for what it may and may not write.
 
 See the repository README for install options and `SKILL.md` for the full rules.

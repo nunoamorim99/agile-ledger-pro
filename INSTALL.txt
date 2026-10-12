@@ -2,10 +2,11 @@ Agile-Ledger Pro — installing
 
 You are reading this inside the drop-in bundle, so you already have the files you need.
 
-FULL install (skills + slash commands)
+FULL install (skills + slash commands + the dashboard)
   Unzip this bundle into your project's  .claude/  folder, so you end up with:
     .claude/skills/agile-ledger-pro/            (and agile-ledger-pro-workspace/)
     .claude/commands/agile-ledger-pro/*.md
+    .claude/dashboard/                          (the local web dashboard)
   Use ~/.claude/ instead to install for all your projects.
   Restart Claude Code (or run /reload-plugins). Commands are namespaced: /agile-ledger-pro:idea
 
@@ -21,6 +22,11 @@ FIRST RUN
 
   From inside a code repo the skill walks up to the sibling ledger repo and matches the
   project by its git remote, so there is nothing to configure.
+
+  /dashboard          opens the whole ledger as a local web page (http://127.0.0.1:4173/)
+                      Needs Python 3.8+ and nothing else. Binds 127.0.0.1 only.
+                      On a manual install, run it directly if /dashboard cannot find it:
+                        python3 .claude/dashboard/serve.py
 
   Already using Agile-Ledger? Pro reads the same ledger. The folder is still
   agile-ledger/ and the root marker is still a Registry.md opening with

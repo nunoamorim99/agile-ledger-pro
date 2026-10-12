@@ -45,7 +45,8 @@ jobs:
                   errors.append(f"version mismatch for {entry['name']}: "
                                 f"marketplace={entry.get('version')} plugin.json={pj.get('version')}")
 
-              for required in ('commands', 'skills/agile-ledger-pro/SKILL.md'):
+              for required in ('commands', 'skills/agile-ledger-pro/SKILL.md',
+                               'dashboard/serve.py'):
                   if not os.path.exists(os.path.join(src, required)):
                       errors.append(f"{entry['name']}: missing {required}")
 
@@ -57,6 +58,14 @@ jobs:
                   print(f"  - {e}", file=sys.stderr)
               sys.exit(1)
           PY
+
+      - name: Dashboard reads and writes a ledger correctly
+        run: python3 plugins/agile-ledger-pro/dashboard/tests/run_tests.py
+
+      - name: Dashboard sources compile
+        run: |
+          python3 -m compileall -q plugins/agile-ledger-pro/dashboard
+          node --check plugins/agile-ledger-pro/dashboard/static/app.js
 
       - name: Install bundles build and contain the right files
         run: python3 scripts/build_bundles.py --check

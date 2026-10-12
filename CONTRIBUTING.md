@@ -16,6 +16,25 @@ A marketplace plugin's root is a hard boundary — paths above `plugins/agile-le
 into the plugin cache on install — so the files must physically live inside the plugin. The manual
 bundles are therefore *built* from it rather than kept as a second committed copy.
 
+### The dashboard
+
+`plugins/agile-ledger-pro/dashboard/` is a standard-library Python server plus vanilla JS — no
+dependencies, no build step, so it ships as source and runs as source. It is in the **full** bundle
+and the marketplace plugin, and deliberately **not** in the skill-only bundle (that one targets
+Claude.ai on the web, where there is nothing to run it on). Its test fixture is excluded from both,
+because it contains a `Registry.md` carrying the real ledger-root marker.
+
+Run its tests before touching the parser or the renderer:
+
+```sh
+python3 plugins/agile-ledger-pro/dashboard/tests/run_tests.py
+```
+
+`test_entries_round_trip` and `test_rerender_is_byte_identical` are the ones that matter: they say
+reading a ledger and writing it back changes nothing. If you add a field to an entry, extend the
+parser, the renderer **and** both tests together — a field the renderer forgets is a field the next
+write silently drops.
+
 ### Building the bundles
 
 ```sh

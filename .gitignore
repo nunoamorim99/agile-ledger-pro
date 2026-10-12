@@ -1,1 +1,5 @@
 dist/
+
+# The dashboard is Python; keep its caches out of the repo and the bundles.
+__pycache__/
+*.py[cod]

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Build the downloadable install bundles from the plugin source of truth.
 
-    source: plugins/agile-ledger-pro/{commands,skills}
+    source: plugins/agile-ledger-pro/{commands,skills,dashboard}
     output: dist/agile-ledger-pro-<version>.zip        full drop-in for .claude/
             dist/agile-ledger-pro-skill-<version>.zip  skill only, for Claude.ai web upload
+
+The dashboard ships only in the full bundle: it is a local Python server, and the
+skill-only bundle targets Claude.ai on the web, where there is nothing to run it on.
 
 The version is read from plugins/agile-ledger-pro/.claude-plugin/plugin.json, so a bundle
 can never disagree with the plugin manifest.
@@ -27,15 +30,27 @@ SRC = ROOT / "plugins" / "agile-ledger-pro"
 DIST = ROOT / "dist"
 
 
-def add_tree(zf: zipfile.ZipFile, source: Path, prefix: str) -> None:
+def _skip_from_bundle(path: Path) -> bool:
+    """Caches, and the test fixture.
+
+    The fixture is deliberately excluded: it contains a Registry.md carrying the
+    real `# Agile-Ledger Registry` marker, and an installed copy of it sitting
+    under .claude/ could be picked up as a ledger root by the resolver.
+    """
+    parts = path.parts
+    return ("__pycache__" in parts or "tests" in parts
+            or path.suffix in {".pyc", ".pyo"})
+
+
+def add_tree(zf: zipfile.ZipFile, source: Path, prefix: str, skip=None) -> None:
     """Write every file under `source` into the archive at `prefix`, sorted for reproducibility."""
     for path in sorted(source.rglob("*")):
-        if path.is_file():
+        if path.is_file() and not (skip and skip(path)):
             zf.write(path, f"{prefix}/{path.relative_to(source).as_posix()}")
 
 
 def build() -> tuple[Path, Path, str]:
-    for required in (SRC / "commands", SRC / "skills"):
+    for required in (SRC / "commands", SRC / "skills", SRC / "dashboard"):
         if not required.is_dir():
             sys.exit(f"build-bundles: missing {required.relative_to(ROOT)}")
 
@@ -55,6 +70,7 @@ def build() -> tuple[Path, Path, str]:
     with zipfile.ZipFile(full, "w", zipfile.ZIP_DEFLATED) as zf:
         add_tree(zf, SRC / "skills", "skills")
         add_tree(zf, SRC / "commands", "commands/agile-ledger-pro")
+        add_tree(zf, SRC / "dashboard", "dashboard", skip=_skip_from_bundle)
         zf.write(ROOT / "INSTALL.txt", "INSTALL.txt")
         zf.write(ROOT / "LICENSE", "LICENSE")
 
@@ -79,9 +95,20 @@ def check(full: Path, skill: Path) -> int:
     for required in ("skills/agile-ledger-pro/SKILL.md",
                      "skills/agile-ledger-pro-workspace/SKILL.md",
                      "commands/agile-ledger-pro/idea.md",
+                     "commands/agile-ledger-pro/dashboard.md",
+                     "dashboard/serve.py",
+                     "dashboard/agileledger/parse.py",
+                     "dashboard/static/index.html",
+                     "dashboard/static/app.js",
+                     "dashboard/static/style.css",
                      "INSTALL.txt"):
         if required not in names:
             errors.append(f"full bundle missing {required}")
+    if any("__pycache__" in n for n in names):
+        errors.append("full bundle contains __pycache__")
+    # A stray Registry.md under .claude/ could be mistaken for a ledger root.
+    if any("/tests/" in n or n.endswith("Registry.md") for n in names):
+        errors.append("full bundle ships the test fixture")
 
     with zipfile.ZipFile(skill) as zf:
         skill_names = zf.namelist()
@@ -89,6 +116,8 @@ def check(full: Path, skill: Path) -> int:
         errors.append("skill bundle missing agile-ledger-pro/SKILL.md")
     if any(n.startswith("commands/") for n in skill_names):
         errors.append("skill bundle should not contain commands/")
+    if any("dashboard" in n for n in skill_names):
+        errors.append("skill bundle should not contain the dashboard")
     # The skill bundle is the web-upload path; it must carry its reference templates.
     if not any(n.startswith("agile-ledger-pro/references/") for n in skill_names):
         errors.append("skill bundle missing agile-ledger-pro/references/")

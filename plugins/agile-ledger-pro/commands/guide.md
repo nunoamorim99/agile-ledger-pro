@@ -12,6 +12,9 @@ Using the **Agile-Ledger Pro** skill, print a concise overview for the user (rea
 
 Name the resolved ledger and repo in one line at the top (`Ledger: ~/Projetos/agile-ledger → repo-a`).
 
+Mention that `/dashboard` opens the same information as a local web page, where most of these
+commands are also available as forms.
+
 Keep it compact and scannable. If there is no ledger repo yet, explain that `/init-ledger` creates it
 and `/register-repo` adds this project, and just show the command map. If the repo has a pre-2.0
 `Agile-Ledger/` folder of its own, point at `/migrate-ledger`.

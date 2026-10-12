@@ -14,7 +14,7 @@
 <p align="center">
   <img alt="version" src="https://img.shields.io/badge/version-1.0-2ea44f">
   <img alt="format" src="https://img.shields.io/badge/storage-plain%20Markdown-0969da">
-  <img alt="commands" src="https://img.shields.io/badge/commands-33%20%2B%20alias-6639ba">
+  <img alt="commands" src="https://img.shields.io/badge/commands-34%20%2B%20alias-6639ba">
   <img alt="deps" src="https://img.shields.io/badge/dependencies-none-cf222e">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-57606a">
 </p>
@@ -23,7 +23,7 @@
 
 > **Agile-Ledger Pro** is the next generation of
 > [Agile-Ledger](https://github.com/nunoamorim99/agile-ledger) — same plain-Markdown ledger format, same
-> 33 commands, shipped as the `agile-ledger-pro` plugin. The ledger on disk is **unchanged**: the folder
+> 34 commands, shipped as the `agile-ledger-pro` plugin. The ledger on disk is **unchanged**: the folder
 > is still `agile-ledger/` and the root marker is still a `Registry.md` opening with
 > `# Agile-Ledger Registry`, so Pro reads and writes an existing Agile-Ledger ledger with nothing to
 > migrate. Switching is an install, not a conversion — see [Install](#install) if you already have the
@@ -147,13 +147,38 @@ scale, your name, and whether the skill may run `git` in `Definitions.md`.
 | 🟢 **Triage** | `/triage` · `/triage-bug` |
 | 🔵 **Shape the backlog** | `/detail-us` · `/detail-epic` · `/create-task` · `/find-bug` · `/refine` |
 | 🟠 **Plan &amp; run the sprint** | `/plan-sprint` · `/start-us` · `/start-bug` · `/review` · `/pr` · `/done-us` · `/done-bug` · `/close-sprint` |
-| 🟣 **Inspect** (read-only) | `/board` (`/standup`) · `/my-work` · `/status` · `/roadmap` · `/guide` · `/ledger-check` · `/sync-main` |
+| 🟣 **Inspect** (read-only) | `/dashboard` · `/board` (`/standup`) · `/my-work` · `/status` · `/roadmap` · `/guide` · `/ledger-check` · `/sync-main` |
 | 🔴 **Release** | `/release` · `/changelog` |
 | ⚫ **Ledger &amp; repos** | `/init-ledger` · `/register-repo` · `/migrate-ledger` · `/ledger-commit` · `/discover-repos` · `/workspace-sync` · `/workspace-status` |
 
 Run **`/guide`** in any session for the command-to-file map and a one-glance state summary. The full
 reference lives in [`plugins/agile-ledger-pro/README.md`](plugins/agile-ledger-pro/README.md), and a printable
 one-page cheat sheet ships as `Agile-Ledger-Pro-cheatsheet.pdf`.
+
+---
+
+## The dashboard
+
+Reading a sprint across eight Markdown files is fine for a commit diff and tiring for a Monday
+morning. `/dashboard` serves the whole ledger as a local page — the board, the backlog, every
+epic's progress, velocity over time, open bugs — grouped by project, and lets you file an idea,
+triage a bug, detail a story, move a card or cut a release without leaving it.
+
+```
+/dashboard                      # finds the ledger, opens http://127.0.0.1:4173/
+/dashboard --port 4200 --no-browser
+```
+
+Python 3.8+, standard library only — nothing to install. It binds `127.0.0.1` and nothing else, so
+the ledger is never served to the network. Every write goes through the same rules the commands
+follow: nothing is deleted, IDs are never reused, overview tables and epic rollups are rebuilt from
+the entries, and an edit replaces only the lines it owns, so the ledger diff shows just your change.
+The page reloads itself when the files change, so what you do here in a Claude session shows up in
+the browser a couple of seconds later.
+
+Git-touching work stays in the session on purpose: `/sync-main`, `/workspace-sync` and
+`/discover-repos` read git history and propose reconstructed work that needs your judgement.
+Details in [`plugins/agile-ledger-pro/dashboard/README.md`](plugins/agile-ledger-pro/dashboard/README.md).
 
 ---
 
@@ -298,7 +323,8 @@ agile-ledger-pro/
 ├── .claude-plugin/marketplace.json          # marketplace catalog
 ├── plugins/agile-ledger-pro/                # ← the plugin: single source of truth
 │   ├── .claude-plugin/plugin.json           # plugin manifest
-│   ├── commands/                            # 33 slash commands (+ /standup alias)
+│   ├── commands/                            # 34 slash commands (+ /standup alias)
+│   ├── dashboard/                           # the local web dashboard (stdlib Python + vanilla JS)
 │   └── skills/
 │       ├── agile-ledger-pro/                # core skill — SKILL.md + references/ (10 templates)
 │       └── agile-ledger-pro-workspace/      # owns the ledger repo, the Registry, and cross-repo sweeps

@@ -1,0 +1,162 @@
+"""Finding the ledger root, and reading the two files that sit at it.
+
+The resolution rules match `SKILL.md`: a ledger root is a directory holding a
+`Registry.md` whose first heading is `# Agile-Ledger Registry` — **never** a
+directory matched by name. That marker is what keeps an existing Agile-Ledger
+ledger readable by Pro.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from . import mdutil
+from .mdutil import clean
+
+REGISTRY_MARKER = "Agile-Ledger Registry"
+REGISTRY_FILE = "Registry.md"
+CONFIG_FILE = "Config.md"
+
+
+def is_ledger_root(path: Path) -> bool:
+    """True when ``path`` holds a Registry.md carrying the marker heading."""
+    registry = path / REGISTRY_FILE
+    if not registry.is_file():
+        return False
+    try:
+        text = registry.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    for line in mdutil.split_lines(text):
+        if not line.strip():
+            continue
+        if mdutil.heading_level(line) == 1:
+            return REGISTRY_MARKER in mdutil.heading_text(line)
+        # Only the *first* heading counts; anything else means this is not it.
+        if mdutil.heading_level(line):
+            return False
+    return False
+
+
+def find_ledger_root(start: Path | None = None) -> Path | None:
+    """Locate the ledger root from ``start``, mirroring the skill's search.
+
+    1. ``start`` itself, then every parent directory.
+    2. Each of those directories' immediate children (the common layout, where
+       the ledger repo sits beside the code repos under one workspace root).
+    """
+    start = (start or Path.cwd()).resolve()
+    candidates = [start, *start.parents]
+
+    for directory in candidates:
+        if is_ledger_root(directory):
+            return directory
+
+    for directory in candidates:
+        try:
+            children = sorted(p for p in directory.iterdir() if p.is_dir())
+        except OSError:
+            continue
+        for child in children:
+            if child.name.startswith("."):
+                continue
+            if is_ledger_root(child):
+                return child
+    return None
+
+
+def read_config(root: Path) -> dict[str, str]:
+    """Parse the fenced ``key: value`` block in the ledger root's Config.md."""
+    config: dict[str, str] = {}
+    path = root / CONFIG_FILE
+    if not path.is_file():
+        return config
+    lines = mdutil.split_lines(path.read_text(encoding="utf-8"))
+    in_fence = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            continue
+        body = line.split("#", 1)[0].strip()
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$", body)
+        if m:
+            config[m.group(1)] = m.group(2).strip()
+    return config
+
+
+def read_registry(root: Path) -> list[dict[str, str]]:
+    """Rows of the Registry table, as dicts keyed by a normalised column name.
+
+    Only rows whose folder actually exists are marked ``present``; a missing
+    folder is reported rather than dropped, because the Registry is
+    never-delete and a stale row is information, not noise.
+    """
+    path = root / REGISTRY_FILE
+    if not path.is_file():
+        return []
+    lines = mdutil.split_lines(path.read_text(encoding="utf-8"))
+    headers, rows = mdutil.parse_table(lines, 0, len(lines))
+    if not headers:
+        return []
+
+    def key(header: str) -> str:
+        header = header.lower()
+        if "repo" in header or "folder" in header:
+            return "slug"
+        if "code path" in header or "path" in header:
+            return "code_path"
+        if "remote" in header:
+            return "remote"
+        if "status" in header:
+            return "status"
+        if "sync" in header:
+            return "last_sync"
+        if "swept" in header:
+            return "last_swept"
+        if "note" in header:
+            return "notes"
+        return re.sub(r"[^a-z0-9]+", "_", header).strip("_")
+
+    keys = [key(h) for h in headers]
+    out = []
+    for row in rows:
+        entry = {k: clean(v) for k, v in zip(keys, row)}
+        slug = mdutil.strip_links(entry.get("slug", "")).strip()
+        if not slug or slug == mdutil.EMPTY:
+            continue
+        entry["slug"] = slug
+        entry["present"] = (root / slug).is_dir()
+        out.append(entry)
+    return out
+
+
+def list_repos(root: Path) -> list[dict[str, str]]:
+    """Every repo folder worth showing: Registry rows plus unregistered folders.
+
+    A folder holding ledger files but missing from the Registry is surfaced
+    with ``registered: False`` rather than hidden — the dashboard should show
+    what is on disk, and the fix is a `/register-repo` run.
+    """
+    rows = read_registry(root)
+    known = {r["slug"] for r in rows}
+    repos = [dict(r, registered=True) for r in rows]
+
+    for child in sorted(p for p in root.iterdir() if p.is_dir()):
+        if child.name.startswith(".") or child.name in known:
+            continue
+        if (child / "Epic-Backlog.md").is_file() or (child / "Ideas.md").is_file():
+            repos.append({
+                "slug": child.name,
+                "code_path": mdutil.EMPTY,
+                "remote": mdutil.EMPTY,
+                "status": "unregistered",
+                "last_sync": mdutil.EMPTY,
+                "last_swept": mdutil.EMPTY,
+                "notes": mdutil.EMPTY,
+                "present": True,
+                "registered": False,
+            })
+    return repos

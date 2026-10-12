@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agile-Ledger Pro</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128202;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Agile-Ledger <b>Pro</b></span>
+  </div>
+
+  <label class="field inline">
+    <span class="field-label">Project</span>
+    <select id="repo-picker" aria-label="Project"></select>
+  </label>
+
+  <label class="field inline">
+    <span class="field-label">Person</span>
+    <select id="person-picker" aria-label="Filter by assignee"></select>
+  </label>
+
+  <div class="spacer"></div>
+
+  <span id="ledger-path" class="ledger-path" title=""></span>
+  <button id="commit-btn" class="btn" type="button">Commit ledger</button>
+  <button id="theme-btn" class="btn icon" type="button" aria-label="Switch theme" title="Switch theme">◐</button>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist"></nav>
+
+<main id="view" class="view" role="main" aria-live="polite"></main>
+
+<div id="drawer" class="drawer" hidden aria-hidden="true">
+  <div class="drawer-scrim" data-close="1"></div>
+  <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+    <header class="drawer-head">
+      <h2 id="drawer-title"></h2>
+      <button class="btn icon" type="button" data-close="1" aria-label="Close">✕</button>
+    </header>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+</div>
+
+<div id="modal" class="modal" hidden aria-hidden="true">
+  <div class="modal-scrim" data-close="1"></div>
+  <form class="modal-panel" id="modal-form" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <header class="modal-head">
+      <h2 id="modal-title"></h2>
+      <button class="btn icon" type="button" data-close="1" aria-label="Close">✕</button>
+    </header>
+    <div id="modal-body" class="modal-body"></div>
+    <footer class="modal-foot">
+      <p id="modal-note" class="modal-note"></p>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-close="1">Cancel</button>
+        <button class="btn primary" type="submit" id="modal-submit">Save</button>
+      </div>
+    </footer>
+  </form>
+</div>
+
+<div id="toasts" class="toasts" aria-live="assertive"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
