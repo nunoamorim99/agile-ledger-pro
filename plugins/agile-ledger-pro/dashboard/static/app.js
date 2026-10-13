@@ -251,6 +251,28 @@ function textArea(name, value, placeholder, rows) {
   return node;
 }
 
+function dateInput(name, value) {
+  return el('input', { type: 'date', name, value: value || '' });
+}
+
+const isoDay = (offset) => {
+  const d = new Date();
+  d.setDate(d.getDate() + (offset || 0));
+  return d.toISOString().slice(0, 10);
+};
+
+/** Two date pickers that write the ledger's own range: "2026-03-16 → 2026-03-27". */
+function dateRangeFields(existing) {
+  const [from, to] = splitRange(existing || '');
+  return el('div', { class: 'form-grid' },
+    field('Starts', dateInput('date_from', from || isoDay(0))),
+    field('Ends', dateInput('date_to', to || isoDay(13)),
+      'two weeks by default — change either date'));
+}
+
+const joinRange = (from, to) =>
+  (from && to) ? `${from} → ${to}` : (from || to || '');
+
 function selectInput(name, options, value) {
   return el('select', { name }, options.map((option) => {
     const [val, label] = Array.isArray(option) ? option : [option, option];
@@ -468,6 +490,13 @@ function kpi(label, value, note) {
     el('div', { class: 'label', text: label }),
     el('div', { class: 'value', text: String(value) }),
     note ? el('div', { class: 'note', text: note }) : null);
+}
+
+/** Just the track and the fill, for callers that print their own numbers. */
+function bar(done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  return el('div', { class: 'meter', role: 'img',
+    'aria-label': `${done} of ${total} complete` }, el('i', { style: `width:${pct}%` }));
 }
 
 function meter(done, total) {
@@ -1153,18 +1182,30 @@ function planSprintForm() {
   const velocity = show(repo.history.rolling_velocity);
   openModal('Plan a sprint', [
     el('div', { class: 'form-grid' },
-      field('Sprint', textInput('name', '', '2026-S05')),
-      field('Dates', textInput('dates', '', '2026-04-06 → 2026-04-17')),
+      field('Sprint', textInput('name', '', suggestSprintName())),
       field('Capacity (pts)', textInput('capacity', '', velocity), `rolling velocity ${velocity}`)),
+    dateRangeFields(''),
     field('Sprint goal', textArea('goal', '', 'One sentence the whole sprint serves.', 2)),
     el('div', { class: 'section-head' }, el('h2', { text: 'Pull in' }), el('span', { class: 'grow' }), total),
     list,
   ], (data, form) => {
       const items = [...form.querySelectorAll('input[name=items]:checked')].map((b) => b.value);
       if (!items.length) { toast('warn', 'Nothing selected', 'Pick at least one item.'); throw new Error('empty'); }
-      return act('plan_sprint', { name: data.name, goal: data.goal, dates: data.dates,
+      return act('plan_sprint', { name: data.name, goal: data.goal,
+        dates: joinRange(data.date_from, data.date_to),
         capacity: data.capacity, items });
     }, { submit: 'Start sprint' });
+}
+
+/** The next sprint name, following whatever pattern the history already uses. */
+function suggestSprintName() {
+  const past = (state.repo.history.sprints || []).map((s) => s.name).filter(Boolean);
+  const year = new Date().getFullYear();
+  if (!past.length) return `${year}-S01`;
+  const m = String(past[0]).match(/^(.*?)(\d+)$/);
+  if (!m) return `${year}-S01`;
+  const next = String(Number(m[2]) + 1).padStart(m[2].length, '0');
+  return `${m[1]}${next}`;
 }
 
 function completeForm(id) {
@@ -2044,21 +2085,18 @@ VIEWS.health = () => {
     return card;
   };
 
-  wrap.append(el('div', { class: 'two-col' }, el('div', {},
+  wrap.append(el('div', { class: 'two-col' }, el('div', { class: 'col-stack' },
     group('Fails Definition of Ready', dor.length,
       dor.map((f) => findingRow(f, 'User-Stories.md')),
       'Every Ready story has a sentence, criteria, an estimate and a priority.'),
-    el('div', { style: 'height:16px' }),
     group('Started before a dependency', early.length,
       early.map((f) => findingRow(f, 'User-Stories.md')),
       'Nothing in the sprint started ahead of what it needs.'),
-    el('div', { style: 'height:16px' }),
     group('Ledger drift', drift.length,
       drift.map((d) => el('div', { class: 'f' },
         el('div', {}, el('h3', { text: d })),
         el('div', {}))),
       state.drift === null ? 'Run the ledger check to look for drift.' : 'No drift found.'),
-    el('div', { style: 'height:16px' }),
     group('Saved with a warning', warned.length,
       warned.map((w) => el('div', { class: 'f' },
         el('div', {},
@@ -2516,7 +2554,7 @@ VIEWS.backlog = () => {
   // Filters, grouping and density — dashed while off, solid once set.
   const bar = el('div', { class: 'toolbar' });
   const opts = {
-    type: [['', 'Type'], ['story', 'Stories'], ['bug', 'Bugs']],
+    type: [['', 'Everything'], ['epic', 'Epics'], ['story', 'Stories'], ['bug', 'Bugs']],
     state: [['', 'State'], ...uniq(backlogRows().map((r) => r.state)).map((s) => [s, s])],
     area: [['', 'Area'], ...uniq(backlogRows().map((r) => r.area)).map((a) => [a, a])],
     assignee: [['', 'Assignee'], ['—', 'Unassigned'],
@@ -2542,10 +2580,20 @@ VIEWS.backlog = () => {
     group, (v) => { remember(GROUP_KEY, v); render(); }));
   bar.append(segControl('Density', [['comfortable', 'Comfortable'], ['compact', 'Compact']],
     density, (v) => { remember(DENSITY_KEY, v); render(); }));
+  if (group === 'epic' && filters.type !== 'epic') {
+    bar.append(el('button', { class: 'btn small ghost', type: 'button',
+      onclick: () => { setAllEpicsOpen(true); render(); } }, 'Expand all'));
+    bar.append(el('button', { class: 'btn small ghost', type: 'button',
+      onclick: () => { setAllEpicsOpen(false); render(); } }, 'Collapse all'));
+  }
   wrap.append(bar);
 
   wrap.append(selectionBar());
 
+  if (filters.type === 'epic') {
+    wrap.append(epicList());
+    return wrap;
+  }
   if (!rows.length) {
     wrap.append(el('p', { class: 'empty', text: 'Nothing matches those filters.' }));
     return wrap;
@@ -2554,6 +2602,38 @@ VIEWS.backlog = () => {
   else wrap.append(...flatGroups(rows, group));
   return wrap;
 };
+
+/* Epics are containers everywhere else, so when you filter to them show them as
+ * themselves: one row each, the way Epic-Backlog.md reads. */
+function epicList() {
+  const epics = state.repo.epics;
+  const card = el('div', { class: 'card epic-card' });
+  card.append(el('div', { class: 'eh' },
+    el('span', { class: 'eh-title grow', text: 'Epics' }),
+    el('span', { class: 'hint', text: `${epics.length} · the permanent home for stories` })));
+  if (!epics.length) {
+    card.append(el('p', { class: 'hint', style: 'padding:0 16px 14px', text: 'No epics yet.' }));
+    return card;
+  }
+  for (const epic of epics) {
+    const roll = epic.rollup || {};
+    card.append(el('div', { class: 'r r-epic' },
+      el('span', {}),
+      el('span', { class: 'st', title: ledgerWord('epic', epic.state) },
+        glyph('epic', epic.state, '')),
+      el('button', { class: 'idlink', type: 'button',
+        onclick: () => openItemPage(epic.id) }, epic.id),
+      el('span', { class: 'r-title grow', text: show(epic.title) }),
+      el('span', {}, stateChip('epic', epic.state)),
+      el('span', { class: 'mono hint',
+        text: `${roll.stories_done || 0}/${roll.stories_total || 0}` }),
+      el('span', { class: 'mono hint',
+        text: `${roll.points_done || 0}/${roll.points_total || 0}p` }),
+      el('span', { class: 'hint', text: isSet(epic.target) ? epic.target : '—' }),
+      el('span', { class: 'hint', text: isSet(epic.area) ? epic.area : '—' })));
+  }
+  return card;
+}
 
 const uniq = (list) => [...new Set(list.filter((x) => isSet(x)))].sort();
 
@@ -2626,6 +2706,10 @@ async function bulkPull(ids) {
   } catch { /* act() has reported it */ }
 }
 
+function setAllEpicsOpen(open) {
+  for (const epic of state.repo.epics) remember(`backlog.open.${epic.id}`, open ? '1' : '0');
+}
+
 function epicGroups(rows) {
   const repo = state.repo;
   const out = [];
@@ -2685,12 +2769,19 @@ function epicCard(epic, items) {
     el('span', { class: 'eh-title grow', text: show(epic.title) }),
     isSet(epic.target) ? badge(`target ${epic.target}`) : null,
     isSet(epic.area) ? badge(epic.area) : null,
+    isOpen ? null : el('span', { class: 'hint eh-count',
+      text: `${items.length} item${items.length === 1 ? '' : 's'}` }),
     el('div', { class: 'meter-pair' },
-      el('div', { class: 'hint', text: `${roll.stories_done || 0}/${roll.stories_total || 0} stories` }),
-      meter(roll.stories_done || 0, roll.stories_total || 0),
-      el('div', { class: 'hint', style: 'margin-top:5px',
-        text: `${roll.points_done || 0}/${roll.points_total || 0} pts` }),
-      meter(roll.points_done || 0, roll.points_total || 0))));
+      el('div', { class: 'mp-row' },
+        el('span', { class: 'hint', text: 'stories' }),
+        el('span', { class: 'mono hint',
+          text: `${roll.stories_done || 0}/${roll.stories_total || 0}` })),
+      bar(roll.stories_done || 0, roll.stories_total || 0),
+      el('div', { class: 'mp-row', style: 'margin-top:6px' },
+        el('span', { class: 'hint', text: 'points' }),
+        el('span', { class: 'mono hint',
+          text: `${roll.points_done || 0}/${roll.points_total || 0}` })),
+      bar(roll.points_done || 0, roll.points_total || 0))));
   if (isOpen) card.append(rowList(items));
   return card;
 }
@@ -3610,6 +3701,9 @@ function render() {
   }
   try {
     const panel = (VIEWS[viewName] || VIEWS.today)();
+    // Views return a wrapper full of sections; give it the page's own rhythm
+    // so nothing has to space itself by hand.
+    if (panel && panel.classList) panel.classList.add('page');
     host.replaceChildren(...[layoutBanner(), panel].filter(Boolean));
   } catch (error) {
     host.replaceChildren(el('p', { class: 'empty',
@@ -3629,9 +3723,86 @@ function renderProject() {
 }
 
 function renderPeople() {
-  const picker = document.getElementById('person-picker');
+  // The menu builds its own rows on open; this only paints the rail's face.
+  const label = document.getElementById('who-name');
+  const initial = document.getElementById('who-initial');
+  if (label) label.textContent = state.person || 'Everyone';
+  if (initial) initial.textContent = (state.person || '·').charAt(0).toUpperCase();
+}
+
+/* ------------------------------------------------------------- menus ----
+ * A small popover anchored to a rail button. Built rather than borrowed from a
+ * native <select> because each row carries a glyph and a second line, and the
+ * earlier attempt — a visually hidden select behind a styled button — could not
+ * be opened at all.
+ */
+let openMenu = null;
+
+function closeMenu() {
+  if (openMenu) { openMenu.remove(); openMenu = null; }
+  document.removeEventListener('click', onMenuOutside, true);
+  document.removeEventListener('keydown', onMenuKey, true);
+}
+
+function onMenuOutside(event) {
+  if (openMenu && !openMenu.contains(event.target)
+      && !(openMenu.anchor && openMenu.anchor.contains(event.target))) closeMenu();
+}
+
+function onMenuKey(event) {
+  if (!openMenu) return;
+  const options = [...openMenu.querySelectorAll('.menu-opt')];
+  if (event.key === 'Escape') { event.preventDefault(); closeMenu(); return; }
+  const at = options.indexOf(document.activeElement);
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    options[Math.min(at + 1, options.length - 1)]?.focus();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (at <= 0) options[0]?.focus(); else options[at - 1].focus();
+  }
+}
+
+function showMenu(anchor, title, rows, current, onPick) {
+  closeMenu();
+  const menu = el('div', { class: 'menu', role: 'listbox', 'aria-label': title });
+  menu.anchor = anchor;
+  if (title) menu.append(el('div', { class: 'menu-title', text: title }));
+  for (const row of rows) {
+    const chosen = row.value === current;
+    menu.append(el('button', {
+      class: `menu-opt${chosen ? ' on' : ''}`, type: 'button', role: 'option',
+      'aria-selected': String(chosen),
+      onclick: () => { closeMenu(); onPick(row.value); },
+    },
+      el('span', { class: 'menu-mark', text: chosen ? '✓' : '' }),
+      el('span', { class: 'menu-body' },
+        el('span', { class: 'menu-label', text: row.label }),
+        row.sub ? el('span', { class: 'menu-sub', text: row.sub }) : null),
+      row.tail ? el('span', { class: 'menu-tail mono', text: row.tail }) : null));
+  }
+  (anchor.parentNode || document.body).append(menu);
+  openMenu = menu;
+  setTimeout(() => {
+    document.addEventListener('click', onMenuOutside, true);
+    document.addEventListener('keydown', onMenuKey, true);
+    menu.querySelector('.menu-opt')?.focus();
+  }, 0);
+}
+
+function projectMenu(anchor) {
+  const repos = (state.workspace.repos || []).filter((r) => r.present);
+  showMenu(anchor, 'Project', repos.map((r) => ({
+    value: r.slug,
+    label: r.slug,
+    sub: r.flat ? 'ledger inside this repo'
+       : (r.registered ? (isSet(r.status) ? r.status : 'registered') : 'not in the Registry'),
+    tail: r.stats ? `${r.stats.ready} ready` : '',
+  })), state.slug, (slug) => { if (slug !== state.slug) loadRepo(slug); });
+}
+
+function personMenu(anchor) {
   const repo = state.repo;
-  if (!picker) return;
   const people = new Set();
   if (repo) {
     for (const s of repo.stories) if (isSet(s.assignee)) people.add(nameOf(s.assignee));
@@ -3639,17 +3810,21 @@ function renderPeople() {
     const me = repo.definitions.config && repo.definitions.config.Me;
     if (me) people.add(me);
   }
-  const previous = state.person;
-  picker.replaceChildren(
-    el('option', { value: '', text: 'Everyone' }),
-    ...[...people].sort().map((p) => el('option', { value: p, text: p })));
-  picker.value = previous;
-  if (picker.value !== previous) state.person = picker.value;
-
-  const label = document.getElementById('who-name');
-  const initial = document.getElementById('who-initial');
-  if (label) label.textContent = state.person || 'Everyone';
-  if (initial) initial.textContent = (state.person || '·').charAt(0).toUpperCase();
+  const count = (who) => {
+    if (!repo) return '';
+    const mine = repo.stories.filter((s) => s.state === 'In Sprint'
+      && nameOf(s.assignee).toLowerCase() === who.toLowerCase());
+    return mine.length ? `${mine.length} in sprint` : '';
+  };
+  const rows = [{ value: '', label: 'Everyone', sub: 'no filter' }];
+  for (const who of [...people].sort()) {
+    rows.push({ value: who, label: who, tail: count(who) });
+  }
+  showMenu(anchor, 'Viewing as', rows, state.person, (who) => {
+    state.person = who;
+    remember('person', who);
+    render();
+  });
 }
 
 /* ------------------------------------------------------------- lifecycle */
@@ -3717,11 +3892,9 @@ async function boot() {
   }
 
   const projBtn = document.getElementById('proj');
-  const picker = document.getElementById('repo-picker');
-  if (projBtn && picker) projBtn.addEventListener('click', () => picker.focus());
+  if (projBtn) projBtn.addEventListener('click', () => projectMenu(projBtn));
   const whoBtn = document.getElementById('who');
-  const person = document.getElementById('person-picker');
-  if (whoBtn && person) whoBtn.addEventListener('click', () => person.focus());
+  if (whoBtn) whoBtn.addEventListener('click', () => personMenu(whoBtn));
 
   document.addEventListener('keydown', (event) => {
     const palette = document.getElementById('palette');
@@ -3761,11 +3934,6 @@ async function boot() {
   }
 
   const present = state.workspace.repos.filter((r) => r.present);
-  picker.replaceChildren(...present.map((r) => el('option', { value: r.slug, text: r.slug })));
-  picker.addEventListener('change', () => loadRepo(picker.value));
-  if (person) {
-    person.addEventListener('change', (event) => { state.person = event.target.value; render(); });
-  }
 
   if (!present.length) {
     document.getElementById('main').replaceChildren(el('p', { class: 'empty',
@@ -3773,12 +3941,12 @@ async function boot() {
     return;
   }
 
+  state.person = remember('person') || '';
   const remembered = remember('repo');
   const preferred = state.workspace.config.default_repo;
   const slug = present.some((r) => r.slug === remembered) ? remembered
     : present.some((r) => r.slug === preferred) ? preferred
     : present[0].slug;
-  picker.value = slug;
 
   state.route = parseHash();
   window.addEventListener('hashchange', onRoute);
