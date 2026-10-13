@@ -490,6 +490,137 @@ def plan_sprint(repo: Repo, name: str = "", goal: str = "", dates: str = "",
             "warnings": warnings, "command": "/plan-sprint"}
 
 
+def pull_into_sprint(repo: Repo, items=None, **_) -> dict:
+    """Add work to the sprint already running, without disturbing the board.
+
+    `plan_sprint` builds a board from nothing, which is right at planning time
+    and wrong afterwards — it would drop everything back into To Do. Pulling in
+    appends to To Do and leaves every other column exactly where it was, which
+    is what both the blocked row's "pull it in" and the backlog's bulk action
+    mean.
+    """
+    wanted = [str(i).strip().upper() for i in (items or []) if str(i).strip()]
+    if not wanted:
+        raise ActionError("nothing selected to pull in")
+
+    sprint = repo.sprint()
+    if mdutil.is_empty(sprint.get("name")):
+        raise ActionError("there is no open sprint — run /plan-sprint first")
+
+    board = {col: list(entries) for col, entries in sprint["board"].items()}
+    on_board = {i["id"] for entries in board.values() for i in entries}
+    stories = {s["id"]: s for s in repo.stories()}
+    bugs = {b["id"]: b for b in repo.bugs()}
+
+    added, skipped, warnings = [], [], []
+    for item_id in wanted:
+        if item_id in on_board:
+            skipped.append(f"{item_id} is already on the board")
+            continue
+        if item_id in stories:
+            story = stories[item_id]
+            if story["state"] not in ("Ready", "In Sprint"):
+                warnings.append(f"{item_id} is {story['state']}, not Ready.")
+            unmet = [d for d in story.get("dependencies") or []
+                     if d in stories and stories[d]["state"] != "Delivered"]
+            if unmet:
+                warnings.append(f"{item_id} depends on {', '.join(unmet)} (not Delivered).")
+            board["To Do"].append({"id": item_id, "title": story["title"],
+                                   "points": story.get("estimate", ""),
+                                   "assignee": story.get("assignee", "")})
+        elif item_id in bugs:
+            bug = bugs[item_id]
+            if bug["state"] not in ("Triaged", "Confirmed", "In Sprint"):
+                warnings.append(f"{item_id} is {bug['state']}, not pullable.")
+            board["To Do"].append({"id": item_id, "title": bug["title"],
+                                   "points": bug.get("estimate", ""),
+                                   "assignee": bug.get("assignee", "")})
+        else:
+            raise ActionError(f"{item_id} is not a detailed story or a registered bug")
+        added.append(item_id)
+
+    if added:
+        _write_board(repo, board)
+        for item_id in added:
+            if item_id in stories and stories[item_id]["state"] != "In Sprint":
+                set_story_state(repo, item_id, "In Sprint")
+            elif item_id in bugs and bugs[item_id]["state"] != "In Sprint":
+                set_bug_state(repo, item_id, "In Sprint")
+
+        # Over-capacity is reported, never refused: the human decides.
+        capacity = 0
+        try:
+            capacity = int(str(sprint.get("capacity", "")).strip())
+        except (TypeError, ValueError):
+            pass
+        if capacity:
+            total = sum(int(i["points"]) for entries in board.values() for i in entries
+                        if str(i.get("points", "")).strip().isdigit())
+            if total > capacity:
+                warnings.append(f"The sprint now holds {total} pts against a "
+                                f"{capacity} pt capacity.")
+
+    message = (f"Pulled {len(added)} item(s) into {sprint['name']}"
+               if added else "Nothing to pull in")
+    if skipped:
+        message += " — " + "; ".join(skipped)
+    return {"message": message, "warnings": warnings, "added": added,
+            "command": "/plan-sprint  (pull in)"}
+
+
+def move_story_to_epic(repo: Repo, story_id: str, epic_id: str, **_) -> dict:
+    """Reparent a story: its own entry, and both epics' index lines.
+
+    The index line is a mirror of the detail entry, so moving a story means
+    taking the line out of the old epic and putting it under the new one. The
+    story keeps its ID, its history and its place in the lifecycle.
+    """
+    story_id = (story_id or "").strip().upper()
+    epic_id = (epic_id or "").strip().upper()
+    target = next((e for e in repo.epics() if e["id"] == epic_id), None)
+    if not target:
+        raise ActionError(f"no such epic: {epic_id}")
+
+    story = next((s for s in repo.stories() if s["id"] == story_id), None)
+    holders = [e for e in repo.epics()
+               if any(i["id"] == story_id for i in e.get("stories") or [])]
+    if not story and not holders:
+        raise ActionError(f"{story_id} is not in this backlog")
+    if all(e["id"] == epic_id for e in holders) and (not story or story.get("parent") == epic_id):
+        return {"message": f"{story_id} is already under {epic_id}"}
+
+    # Carry the index line across verbatim when there is no detail entry yet
+    # (a Draft lives only as that line).
+    carried = None
+    for epic in holders:
+        carried = carried or next(
+            (dict(i) for i in epic["stories"] if i["id"] == story_id), None)
+
+    handle = repo.file("Epic-Backlog.md")
+    for epic in sorted(holders, key=lambda e: e["span"][0], reverse=True):
+        if epic["id"] == epic_id:
+            continue
+        epic["stories"] = [i for i in epic["stories"] if i["id"] != story_id]
+        handle.replace(epic["span"], render.render_epic(epic))
+
+    if story:
+        story["parent"] = epic_id
+        repo.file("User-Stories.md").replace(story["span"], render.render_story(story))
+        repo.sync_epic_index(story)
+    elif carried:
+        fresh = next((e for e in repo.epics() if e["id"] == epic_id), None)
+        index = [dict(i) for i in fresh.get("stories") or []]
+        if not any(i["id"] == story_id for i in index):
+            index.append(carried)
+        index.sort(key=lambda i: id_rank(i["id"]))
+        fresh["stories"] = index
+        repo.file("Epic-Backlog.md").replace(fresh["span"], render.render_epic(fresh))
+
+    moved_from = ", ".join(e["id"] for e in holders if e["id"] != epic_id) or "nowhere"
+    return {"message": f"{story_id} moved from {moved_from} to {epic_id}",
+            "id": story_id}
+
+
 def move_board_item(repo: Repo, item_id: str, column: str, **_) -> dict:
     """Move one item between board columns (``/start-us`` … ``/done-us``)."""
     item_id = (item_id or "").strip().upper()
@@ -871,6 +1002,8 @@ ACTIONS = {
     "update_bug": update_bug,
     "set_bug_state": set_bug_state,
     "plan_sprint": plan_sprint,
+    "pull_into_sprint": pull_into_sprint,
+    "move_story_to_epic": move_story_to_epic,
     "move_board_item": move_board_item,
     "set_blocked": set_blocked,
     "complete_item": complete_item,

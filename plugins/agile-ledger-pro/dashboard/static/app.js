@@ -163,6 +163,18 @@ function toast(kind, title, message, list) {
 
 /* ---------------------------------------------------------------- actions */
 
+/** Post one action without toasting or re-rendering — for bulk runs, which
+ *  report once at the end rather than flashing a toast per item. */
+async function postAction(action, params) {
+  const result = await api(`/api/repo/${encodeURIComponent(state.slug)}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, params: params || {} }),
+  });
+  state.pendingOwnWrite = true;
+  return result;
+}
+
 async function act(action, params, successTitle) {
   try {
     const result = await api(`/api/repo/${encodeURIComponent(state.slug)}/action`, {
@@ -628,108 +640,15 @@ VIEWS.overview = () => {
   return wrap;
 };
 
-VIEWS.board = () => {
-  const repo = state.repo;
-  const sprint = repo.sprint;
-  const wrap = el('div', {});
-
-  const planBtn = el('button', { class: 'btn primary', type: 'button', onclick: planSprintForm }, 'Plan sprint');
-  const closeBtn = el('button', { class: 'btn', type: 'button', onclick: closeSprintForm }, 'Close sprint');
-  wrap.append(sectionHead(
-    isSet(sprint.name) ? `Sprint ${sprint.name}` : 'No sprint open',
-    [show(sprint.goal), isSet(sprint.dates) ? sprint.dates : null,
-     isSet(sprint.capacity) ? `capacity ${sprint.capacity} pts` : null].filter(Boolean).join(' · '),
-    planBtn, isSet(sprint.name) ? closeBtn : null));
-
-  if (!isSet(sprint.name)) {
-    wrap.append(el('p', { class: 'empty', text: 'Run “Plan sprint” to pull Ready stories and triaged bugs onto the board.' }));
-    return wrap;
-  }
-
-  const blockedIds = new Set(sprint.blocked.map((b) => b.id));
-  const board = el('div', { class: 'board' });
-
-  for (const column of state.workspace.vocabulary.board_columns) {
-    const items = sprint.board[column].filter((i) => matchesPerson(i.assignee));
-    const points = items.reduce((sum, i) => sum + num(i.points), 0);
-    const node = el('div', { class: 'column', dataset: { column } },
-      el('h3', {}, el('span', { text: column }),
-        el('span', { class: 'n', text: `${items.length}${points ? ' · ' + points + 'p' : ''}` })));
-
-    for (const item of items) {
-      node.append(ticket(item, column, blockedIds.has(item.id)));
-    }
-    if (!items.length) node.append(el('p', { class: 'hint', style: 'text-align:center;padding:10px 0', text: '—' }));
-
-    node.addEventListener('dragover', (e) => { e.preventDefault(); node.classList.add('drop'); });
-    node.addEventListener('dragleave', () => node.classList.remove('drop'));
-    node.addEventListener('drop', (e) => {
-      e.preventDefault();
-      node.classList.remove('drop');
-      const id = e.dataTransfer.getData('text/plain');
-      if (id) moveItem(id, column);
-    });
-    board.append(node);
-  }
-  wrap.append(board);
-
-  if (sprint.blocked.length) {
-    wrap.append(el('section', { class: 'section', style: 'margin-top:18px' },
-      sectionHead(`🚧 Blocked (${sprint.blocked.length})`,
-        'a flag, not a column — each item keeps its place on the board'),
-      el('div', { class: 'stack' }, sprint.blocked.map((b) =>
-        el('div', { class: 'blocked' },
-          el('div', { class: 'grow' },
-            el('div', { class: 'blocked-head' },
-              el('button', { class: 'idlink', type: 'button',
-                onclick: () => openItem(b.id) }, b.id),
-              el('span', { class: 'blocked-title', text: show(b.title) })),
-            el('div', { class: 'blocked-why' },
-              el('span', { class: 'blocked-label' }, blockedMark()),
-              prose(b.reason || b.text, 'span', { class: 'blocked-reason' }))),
-          el('button', { class: 'btn small', type: 'button',
-            onclick: () => act('set_blocked', { item_id: b.id, blocked: false }, 'Unblocked') },
-            'Unblock'))))));
-  }
-  return wrap;
-};
-
 /** Story / bug ids as small clickable chips, so a long list still wraps. */
 function idChips(ids) {
   if (!ids || !ids.length) return document.createTextNode(EMPTY);
   const wrap = el('span', { class: 'chips' });
   for (const id of ids) {
     wrap.append(el('button', { class: 'idlink', type: 'button',
-      onclick: () => openItem(id) }, id));
+      onclick: () => openItemPage(id) }, id));
   }
   return wrap;
-}
-
-function ticket(item, column, blocked) {
-  const entity = item.id.startsWith('BUG') ? 'bug' : 'story';
-  const node = el('div', { class: `ticket${blocked ? ' is-blocked' : ''}`,
-      draggable: 'true', dataset: { id: item.id } },
-    el('div', { class: 't-id' },
-      // Shape = story or bug, fill = how far round the board it is. The column
-      // heading above supplies the word, so this is never colour alone.
-      el('span', { class: 'st st-motion', style: 'gap:5px',
-        title: `${ledgerWord(entity, 'In Sprint')} · ${column}` },
-        glyph(entity, 'In Sprint', column)),
-      el('span', { text: item.id })),
-    el('div', { class: 't-title', text: show(item.title) }),
-    el('div', { class: 't-foot' },
-      el('span', { text: isSet(item.assignee) ? item.assignee : 'unassigned' }),
-      el('span', { class: 'chips' },
-        blocked ? blockedMark() : null,
-        isSet(item.points) ? badge(`${item.points} pts`) : null)));
-
-  node.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', item.id);
-    node.classList.add('dragging');
-  });
-  node.addEventListener('dragend', () => node.classList.remove('dragging'));
-  node.addEventListener('click', () => openItem(item.id));
-  return node;
 }
 
 function moveItem(id, column) {
@@ -2375,26 +2294,605 @@ function isAcknowledged(key) { return remember(ackKey(key)) === '1'; }
 function acknowledge(key) { remember(ackKey(key), '1'); }
 
 /** Backlog gathers what used to be three tabs; Phase 4 makes it one outline. */
-VIEWS.backlog = () => {
+/* ===================================================================== Sprint
+ * The board, with the sprint's own numbers above it and the exceptions marked
+ * in place rather than exiled to a list underneath.
+ */
+
+const LANES_KEY = 'sprint.lanes';
+const DENSITY_KEY = 'backlog.density';
+const GROUP_KEY = 'backlog.group';
+
+function segControl(label, options, current, onPick) {
+  return el('div', { class: 'seg', role: 'group', 'aria-label': label },
+    options.map(([value, text]) => el('button', { type: 'button',
+      'aria-pressed': String(value === current),
+      onclick: () => onPick(value) }, text)));
+}
+
+/** Run one action per item and summarise the whole run in a single toast. */
+async function runBulk(title, ids, build) {
+  const messages = [];
+  const warnings = [];
+  let failed = 0;
+  for (const id of ids) {
+    const { action, params } = build(id);
+    try {
+      const result = await postAction(action, params);
+      if (result.message) messages.push(result.message);
+      for (const w of result.warnings || []) warnings.push(w);
+    } catch (error) {
+      failed += 1;
+      warnings.push(`${id}: ${error.message}`);
+    }
+  }
+  await loadRepo(state.slug);
+  refreshWorkspaceQuietly();
+  toast(failed || warnings.length ? 'warn' : 'ok',
+    `${title} · ${ids.length - failed} of ${ids.length}`,
+    messages.slice(0, 2).join(' · '), warnings.slice(0, 6));
+}
+
+VIEWS.board = () => {
+  const repo = state.repo;
+  const sprint = repo.sprint;
   const wrap = el('div', {});
-  const groups = [['epics', 'Epics'], ['stories', 'Stories'], ['bugs', 'Bugs']];
-  let current = remember('backlog.group') || 'epics';
-  if (!groups.some(([k]) => k === current)) current = 'epics';
+  const day = sprintDay(sprint);
 
-  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Backlog view' },
-    groups.map(([key, label]) => el('button', { type: 'button',
-      'aria-pressed': String(key === current),
-      onclick: () => { remember('backlog.group', key); render(); } }, label)));
+  if (!isSet(sprint.name)) {
+    wrap.append(el('div', { class: 'page-head' },
+      el('div', { class: 'grow' },
+        el('h1', { class: 'page-title', text: 'No sprint open' }),
+        el('p', { class: 'page-sub',
+          text: 'Pull Ready stories and triaged bugs onto a board to start one.' })),
+      el('button', { class: 'btn primary', type: 'button', onclick: planSprintForm },
+        'Plan sprint')));
+    return wrap;
+  }
 
+  const columns = state.workspace.vocabulary.board_columns;
+  const all = columns.flatMap((c) => sprint.board[c] || []);
+  const committed = pointsOf(all);
+  const donePts = pointsOf(sprint.board.Done || []);
+  const capacity = num(sprint.capacity);
+  const blockedIds = new Set(sprint.blocked.map((b) => b.id));
+  const early = needsYou().filter((f) => f.kind === 'early');
+  const earlyIds = new Set(early.map((f) => f.id));
+
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('div', { class: 'crumb' },
+        el('span', { class: 'mono', text: sprint.name }),
+        isSet(sprint.dates) ? el('span', { text: sprint.dates }) : null,
+        day ? el('span', { text: `day ${day.day} of ${day.total}` }) : null),
+      el('h1', { class: 'page-title' }, rich(show(sprint.goal)))),
+    el('div', { class: 'chips' },
+      el('button', { class: 'btn', type: 'button', onclick: closeSprintForm }, 'Close sprint'),
+      el('button', { class: 'btn', type: 'button', onclick: planSprintForm }, 'Replan'))));
+
+  // The sprint's numbers, up where a decision gets made.
+  const stats = el('div', { class: 'sprint-stats' });
+  const capCard = el('div', { class: 'side-card' },
+    el('h3', { text: 'Capacity' }),
+    el('p', { class: 'readiness' },
+      el('span', { class: 'readiness-big mono', text: String(committed) }),
+      el('span', { class: 'hint',
+        text: capacity ? `of ${capacity} pts · ${donePts} done` : `pts · ${donePts} done` })));
+  if (capacity) capCard.append(meter(Math.min(committed, capacity), capacity));
+  if (capacity && committed > capacity) {
+    capCard.append(el('p', { class: 'hint', style: 'margin-top:6px',
+      text: `${committed - capacity} pts over capacity.` }));
+  }
+  stats.append(capCard);
+
+  stats.append(el('div', { class: 'side-card' },
+    el('h3', { text: 'Exceptions' }),
+    el('div', { class: 'ex-row' },
+      blockedMark(), el('span', { class: 'mono', text: String(sprint.blocked.length) })),
+    el('div', { class: 'ex-row' },
+      el('span', { class: 'mark-warn' },
+        svg('svg', { width: 13, height: 13, viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+          svg('path', { d: NEED_ICON.early, fill: 'none', stroke: 'currentColor',
+            'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })),
+        el('span', { style: 'font-size:11.5px;font-weight:550', text: 'Started early' })),
+      el('span', { class: 'mono', text: String(early.length) }))));
+
+  stats.append(el('div', { class: 'side-card' },
+    el('h3', { text: 'Burndown' }), burndown(sprint, committed, donePts)));
+  wrap.append(stats);
+
+  const lanes = remember(LANES_KEY) || 'none';
+  wrap.append(el('div', { class: 'toolbar' },
+    el('span', { class: 'hint', text: 'Lanes' }),
+    segControl('Lanes', [['none', 'None'], ['assignee', 'Assignee'], ['epic', 'Epic']],
+      lanes, (v) => { remember(LANES_KEY, v); render(); })));
+
+  wrap.append(boardGrid(columns, sprint, lanes, blockedIds, earlyIds));
+  wrap.append(el('p', { class: 'hint', style: 'margin-top:10px',
+    text: 'Drag a card between columns, or focus one and press 1–5.' }));
+  return wrap;
+};
+
+function laneSplit(items, lanes) {
+  if (lanes === 'none') return [{ key: '', label: '', items }];
+  const repo = state.repo;
+  const groups = new Map();
+  for (const item of items) {
+    let key = '—';
+    if (lanes === 'assignee') key = nameOf(item.assignee) || 'Unassigned';
+    else {
+      const story = repo.stories.find((s) => s.id === item.id);
+      key = (story && story.parent) || 'No epic';
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, list]) => ({ key, label: key, items: list }));
+}
+
+function boardGrid(columns, sprint, lanes, blockedIds, earlyIds) {
+  const all = columns.flatMap((c) => (sprint.board[c] || []).map((i) => ({ ...i, column: c })));
+  const rows = laneSplit(all, lanes);
+  const grid = el('div', { class: `board-grid${lanes === 'none' ? ' no-lanes' : ''}` });
+
+  const head = el('div', { class: 'board-head' });
+  if (lanes !== 'none') head.append(el('div', { class: 'lane-head' }));
+  for (const c of columns) {
+    const items = sprint.board[c] || [];
+    head.append(el('div', { class: 'col-head' },
+      glyph('story', 'In Sprint', c),
+      el('span', { class: 'grow', text: c }),
+      el('span', { class: 'mono hint', text: `${items.length} · ${pointsOf(items)}p` })));
+  }
+  grid.append(head);
+
+  for (const lane of rows) {
+    const line = el('div', { class: 'board-row' });
+    if (lanes !== 'none') {
+      line.append(el('div', { class: 'lane-head' },
+        lanes === 'assignee'
+          ? el('span', { class: 'av av-s', text: lane.label.charAt(0).toUpperCase() })
+          : null,
+        el('span', { class: 'grow', text: lane.label }),
+        el('span', { class: 'mono hint',
+          text: `${lane.items.length} · ${pointsOf(lane.items)}p` })));
+    }
+    for (const c of columns) {
+      const cell = el('div', { class: 'cell', dataset: { column: c } });
+      for (const item of lane.items.filter((i) => i.column === c)) {
+        cell.append(boardCard(item, c, blockedIds.has(item.id), earlyIds.has(item.id),
+          sprint.blocked.find((b) => b.id === item.id)));
+      }
+      cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.classList.add('drop'); });
+      cell.addEventListener('dragleave', () => cell.classList.remove('drop'));
+      cell.addEventListener('drop', (e) => {
+        e.preventDefault();
+        cell.classList.remove('drop');
+        const id = e.dataTransfer.getData('text/plain');
+        if (id) moveItem(id, c);
+      });
+      line.append(cell);
+    }
+    grid.append(line);
+  }
+  return grid;
+}
+
+function boardCard(item, column, blocked, early, blockInfo) {
+  const repo = state.repo;
+  const entity = item.id.startsWith('BUG') ? 'bug' : 'story';
+  const full = repo.stories.find((s) => s.id === item.id)
+    || repo.bugs.find((b) => b.id === item.id);
+  const columns = state.workspace.vocabulary.board_columns;
+
+  const card = el('div', {
+    class: `tk${blocked ? ' is-blocked' : ''}${early ? ' is-early' : ''}`,
+    draggable: 'true', tabindex: '0', dataset: { id: item.id },
+    'aria-label': `${item.id} ${show(item.title)}, ${column}`,
+  });
+
+  card.append(el('div', { class: 'tk-top' },
+    el('span', { class: 'st st-motion', title: `${ledgerWord(entity, 'In Sprint')} · ${column}` },
+      glyph(entity, 'In Sprint', column)),
+    el('span', { class: 'mono tk-id', text: item.id }),
+    isSet(item.points) ? el('span', { class: 'mono hint', text: `${item.points}p` }) : null));
+  card.append(el('div', { class: 'tk-title', text: show(item.title) }));
+
+  // Exceptions read on the card, where the work is — not in a list below.
+  if (blocked) {
+    card.append(el('div', { class: 'tk-flag crit' },
+      blockedMark(blockInfo && blockInfo.reason)));
+  }
+  if (early) {
+    const f = needsYou().find((x) => x.kind === 'early' && x.id === item.id);
+    card.append(el('div', { class: 'tk-flag warn' },
+      el('span', { class: 'mark-warn' },
+        svg('svg', { width: 13, height: 13, viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+          svg('path', { d: NEED_ICON.early, fill: 'none', stroke: 'currentColor',
+            'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })),
+        el('span', { style: 'font-size:11.5px', text: f ? f.detail : 'started early' }))));
+  }
+
+  const meta = [];
+  if (full && isSet(full.parent)) meta.push(full.parent);
+  if (full && full.criteria && full.criteria.length) {
+    meta.push(`AC ${full.criteria_met ? full.criteria.length : 0}/${full.criteria.length}`);
+  }
+  const pr = full && String(full.delivered || full.fixed || '').match(/PR\s*#?\d+/i);
+  if (pr) meta.push(pr[0]);
+
+  card.append(el('div', { class: 'tk-foot' },
+    isSet(item.assignee)
+      ? el('span', { class: 'tk-who' },
+          el('span', { class: 'av av-s', text: nameOf(item.assignee).charAt(0).toUpperCase() }),
+          el('span', { text: nameOf(item.assignee) }))
+      : el('span', { class: 'hint', text: 'unassigned' }),
+    meta.length ? el('span', { class: 'mono hint tk-meta', text: meta.join(' · ') }) : null));
+
+  card.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', item.id);
+    card.classList.add('dragging');
+  });
+  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  card.addEventListener('click', () => openItem(item.id));
+  // 1–5 move the focused card, so the board is usable without a mouse.
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); openItemPage(item.id); return; }
+    const n = Number(e.key);
+    if (n >= 1 && n <= columns.length) {
+      e.preventDefault();
+      if (columns[n - 1] !== column) moveItem(item.id, columns[n - 1]);
+    }
+  });
+  return card;
+}
+
+/* ==================================================================== Backlog
+ * One outline: every epic with its stories, Drafts included, plus the bug
+ * track beside it. Filters, grouping and density are per viewer.
+ */
+
+const FILTER_KEYS = ['type', 'state', 'area', 'assignee', 'priority'];
+
+function backlogFilters() {
+  const out = {};
+  for (const key of FILTER_KEYS) out[key] = remember(`backlog.f.${key}`) || '';
+  return out;
+}
+
+/** Every row the backlog can show: detailed stories, Drafts, and bugs. */
+function backlogRows() {
+  const repo = state.repo;
+  const rows = [];
+  const detailed = new Set(repo.stories.map((s) => s.id));
+
+  for (const epic of repo.epics) {
+    for (const item of epic.stories || []) {
+      if (detailed.has(item.id)) continue;
+      rows.push({ kind: 'story', entity: 'story', id: item.id, title: item.title,
+        state: 'Draft', priority: item.priority, points: item.points,
+        assignee: item.assignee, epic: epic.id, area: epic.area, draft: true });
+    }
+  }
+  for (const s of repo.stories) {
+    rows.push({ kind: 'story', entity: 'story', id: s.id, title: s.title, state: s.state,
+      priority: s.priority, points: s.estimate, assignee: s.assignee,
+      epic: s.parent, area: s.area, story: s });
+  }
+  for (const b of repo.bugs) {
+    rows.push({ kind: 'bug', entity: 'bug', id: b.id, title: b.title, state: b.state,
+      priority: b.priority, points: b.estimate, assignee: b.assignee,
+      epic: '', area: b.area, severity: b.severity, bug: b });
+  }
+  return rows;
+}
+
+function applyFilters(rows, filters) {
+  return rows.filter((r) => {
+    if (filters.type && r.kind !== filters.type) return false;
+    if (filters.state && r.state !== filters.state) return false;
+    if (filters.area && (r.area || '') !== filters.area) return false;
+    if (filters.assignee) {
+      const who = nameOf(r.assignee);
+      if (filters.assignee === '—' ? who : who !== filters.assignee) return false;
+    }
+    if (filters.priority && (r.priority || '') !== filters.priority) return false;
+    if (state.person && nameOf(r.assignee).toLowerCase() !== state.person.toLowerCase()) {
+      return false;
+    }
+    return true;
+  });
+}
+
+const selected = new Set();
+
+VIEWS.backlog = () => {
+  const repo = state.repo;
+  const filters = backlogFilters();
+  const group = remember(GROUP_KEY) || 'epic';
+  const density = remember(DENSITY_KEY) || 'comfortable';
+  const rows = applyFilters(backlogRows(), filters);
+
+  const ready = repo.stories.filter((s) => s.state === 'Ready');
+  const readyPts = pointsOf(ready);
+  const velocity = num(repo.history.rolling_velocity);
+  const dorFails = needsYou().filter((f) => f.kind === 'dor').length;
+
+  const wrap = el('div', { class: density === 'compact' ? 'density-compact' : '' });
   wrap.append(el('div', { class: 'page-head' },
     el('div', { class: 'grow' },
       el('h1', { class: 'page-title', text: 'Backlog' }),
       el('p', { class: 'page-sub',
-        text: `${state.repo.stats.ready} Ready · ${state.repo.stats.ready_points} pts` })),
-    seg));
-  wrap.append(VIEWS[current]());
+        text: `${rows.length} item(s) · ${readyPts} Ready pts`
+            + (velocity ? ` against a rolling velocity of ${velocity}` : '') })),
+    el('div', { class: 'head-meters' },
+      velocity ? el('div', {},
+        el('div', { class: 'hint', text: 'Ready vs velocity' }),
+        meter(Math.min(readyPts, velocity), velocity)) : null,
+      dorFails ? el('button', { class: 'btn small', type: 'button',
+        onclick: () => goTo('health') }, `${dorFails} failing Definition of Ready`) : null)));
+
+  // Filters, grouping and density — dashed while off, solid once set.
+  const bar = el('div', { class: 'toolbar' });
+  const opts = {
+    type: [['', 'Type'], ['story', 'Stories'], ['bug', 'Bugs']],
+    state: [['', 'State'], ...uniq(backlogRows().map((r) => r.state)).map((s) => [s, s])],
+    area: [['', 'Area'], ...uniq(backlogRows().map((r) => r.area)).map((a) => [a, a])],
+    assignee: [['', 'Assignee'], ['—', 'Unassigned'],
+      ...uniq(backlogRows().map((r) => nameOf(r.assignee))).map((a) => [a, a])],
+    priority: [['', 'Priority'],
+      ...state.workspace.vocabulary.priorities.map((p) => [p.value, p.name])],
+  };
+  for (const key of FILTER_KEYS) {
+    const value = filters[key];
+    const select = el('select', { class: `filter${value ? ' filter-on' : ''}`,
+      'aria-label': key,
+      onchange: (e) => { remember(`backlog.f.${key}`, e.target.value); render(); } },
+      opts[key].map(([v, label]) => {
+        const o = el('option', { value: v, text: label });
+        if (v === value) o.selected = true;
+        return o;
+      }));
+    bar.append(select);
+  }
+  bar.append(el('span', { class: 'grow' }));
+  bar.append(el('span', { class: 'hint', text: 'Group' }));
+  bar.append(segControl('Group', [['epic', 'Epic'], ['state', 'State'], ['area', 'Area']],
+    group, (v) => { remember(GROUP_KEY, v); render(); }));
+  bar.append(segControl('Density', [['comfortable', 'Comfortable'], ['compact', 'Compact']],
+    density, (v) => { remember(DENSITY_KEY, v); render(); }));
+  wrap.append(bar);
+
+  wrap.append(selectionBar());
+
+  if (!rows.length) {
+    wrap.append(el('p', { class: 'empty', text: 'Nothing matches those filters.' }));
+    return wrap;
+  }
+  if (group === 'epic') wrap.append(...epicGroups(rows));
+  else wrap.append(...flatGroups(rows, group));
   return wrap;
 };
+
+const uniq = (list) => [...new Set(list.filter((x) => isSet(x)))].sort();
+
+function selectionBar() {
+  const bar = el('div', { class: `selbar${selected.size ? ' on' : ''}` });
+  if (!selected.size) return bar;
+  const ids = [...selected];
+  bar.append(el('span', { class: 'selbar-n', text: `${ids.length} selected` }));
+  bar.append(el('button', { class: 'btn small', type: 'button',
+    onclick: () => bulkPriority(ids) }, 'Priority…'));
+  bar.append(el('button', { class: 'btn small', type: 'button',
+    onclick: () => bulkAssign(ids) }, 'Assign…'));
+  bar.append(el('button', { class: 'btn small', type: 'button',
+    onclick: () => bulkMoveEpic(ids) }, 'Move to epic…'));
+  bar.append(el('button', { class: 'btn small primary', type: 'button',
+    onclick: () => bulkPull(ids) }, 'Pull into sprint'));
+  bar.append(el('span', { class: 'grow' }));
+  bar.append(el('button', { class: 'btn small ghost', type: 'button',
+    onclick: () => { selected.clear(); render(); } }, 'Clear'));
+  return bar;
+}
+
+const isStoryId = (id) => !String(id).startsWith('BUG');
+
+function bulkPriority(ids) {
+  openModal(`Priority for ${ids.length} item(s)`,
+    [field('Priority', priorityInput(''))],
+    async (data) => {
+      selected.clear();
+      await runBulk('Priority set', ids, (id) => ({
+        action: isStoryId(id) ? 'update_story' : 'update_bug',
+        params: isStoryId(id) ? { story_id: id, priority: data.priority }
+                              : { bug_id: id, priority: data.priority },
+      }));
+    }, { submit: 'Set priority' });
+}
+
+function bulkAssign(ids) {
+  openModal(`Assign ${ids.length} item(s)`,
+    [field('Assignee', textInput('assignee', '', 'a name, or blank to unassign'))],
+    async (data) => {
+      selected.clear();
+      await runBulk('Assigned', ids, (id) => ({
+        action: isStoryId(id) ? 'update_story' : 'update_bug',
+        params: isStoryId(id) ? { story_id: id, assignee: data.assignee }
+                              : { bug_id: id, assignee: data.assignee },
+      }));
+    }, { submit: 'Assign' });
+}
+
+function bulkMoveEpic(ids) {
+  const stories = ids.filter(isStoryId);
+  if (!stories.length) { toast('warn', 'Stories only', 'Bugs are a parallel track — they have no epic.'); return; }
+  openModal(`Move ${stories.length} story(ies) to an epic`,
+    [field('Epic', selectInput('epic_id',
+      state.repo.epics.map((e) => [e.id, `${e.id} — ${e.title}`])))],
+    async (data) => {
+      selected.clear();
+      await runBulk('Moved', stories, (id) => ({
+        action: 'move_story_to_epic', params: { story_id: id, epic_id: data.epic_id },
+      }));
+    }, { submit: 'Move', note: 'Bugs in the selection are skipped — they have no epic.' });
+}
+
+async function bulkPull(ids) {
+  selected.clear();
+  try {
+    const result = await act('pull_into_sprint', { items: ids }, 'Pulled into the sprint');
+    if (result && result.added && !result.added.length) render();
+  } catch { /* act() has reported it */ }
+}
+
+function epicGroups(rows) {
+  const repo = state.repo;
+  const out = [];
+  const byEpic = new Map();
+  for (const r of rows) {
+    if (r.kind === 'bug') continue;
+    const key = r.epic || 'No epic';
+    if (!byEpic.has(key)) byEpic.set(key, []);
+    byEpic.get(key).push(r);
+  }
+
+  for (const epic of repo.epics) {
+    const items = byEpic.get(epic.id) || [];
+    if (!items.length) continue;
+    byEpic.delete(epic.id);
+    out.push(epicCard(epic, items));
+  }
+  for (const [key, items] of byEpic) {
+    out.push(groupCard(key, 'stories with no epic', items));
+  }
+
+  const bugs = rows.filter((r) => r.kind === 'bug');
+  if (bugs.length) out.push(groupCard('Bugs', 'parallel track · no epic', bugs));
+  return out;
+}
+
+function flatGroups(rows, by) {
+  const groups = new Map();
+  for (const r of rows) {
+    const key = (by === 'state' ? r.state : r.area) || '—';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return [...groups.entries()].map(([key, items]) => groupCard(key, `${items.length}`, items));
+}
+
+/* Done epics collapse: the work is finished, the record stays reachable. */
+function epicCard(epic, items) {
+  const done = epic.state === 'Done' || epic.state === 'Discarded';
+  const openKey = `backlog.open.${epic.id}`;
+  const stored = remember(openKey);
+  const isOpen = stored === null || stored === undefined ? !done : stored === '1';
+  const roll = epic.rollup || {};
+
+  const card = el('div', { class: 'card epic-card' });
+  card.append(el('div', { class: 'eh' },
+    el('button', { class: 'chev', type: 'button',
+      'aria-expanded': String(isOpen),
+      onclick: () => { remember(openKey, isOpen ? '0' : '1'); render(); } },
+      svg('svg', { width: 12, height: 12, viewBox: '0 0 12 12', 'aria-hidden': 'true' },
+        svg('path', { d: isOpen ? 'M3 4.75 6 7.75 9 4.75' : 'M4.75 3 7.75 6 4.75 9',
+          fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5,
+          'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))),
+    stateChip('epic', epic.state),
+    el('button', { class: 'idlink', type: 'button',
+      onclick: () => openItemPage(epic.id) }, epic.id),
+    el('span', { class: 'eh-title grow', text: show(epic.title) }),
+    isSet(epic.target) ? badge(`target ${epic.target}`) : null,
+    isSet(epic.area) ? badge(epic.area) : null,
+    el('div', { class: 'meter-pair' },
+      el('div', { class: 'hint', text: `${roll.stories_done || 0}/${roll.stories_total || 0} stories` }),
+      meter(roll.stories_done || 0, roll.stories_total || 0),
+      el('div', { class: 'hint', style: 'margin-top:5px',
+        text: `${roll.points_done || 0}/${roll.points_total || 0} pts` }),
+      meter(roll.points_done || 0, roll.points_total || 0))));
+  if (isOpen) card.append(rowList(items));
+  return card;
+}
+
+function groupCard(title, sub, items) {
+  const card = el('div', { class: 'card epic-card' });
+  card.append(el('div', { class: 'eh' },
+    el('span', { class: 'eh-title grow', text: title }),
+    el('span', { class: 'hint', text: sub })));
+  card.append(rowList(items));
+  return card;
+}
+
+const PAGE = 100;
+
+function rowList(items) {
+  const box = el('div', {});
+  // Delivered work collapses to one line so the live backlog stays readable.
+  const live = items.filter((r) => !/Delivered|Fixed|Discarded|Won/.test(r.state || ''));
+  const closed = items.filter((r) => /Delivered|Fixed|Discarded|Won/.test(r.state || ''));
+
+  const ordered = live.slice().sort((a, b) =>
+    priorityRank(a.priority) - priorityRank(b.priority) || idRank(a.id) - idRank(b.id));
+
+  const showAllKey = `backlog.all.${items.length}.${ordered[0] ? ordered[0].id : 'x'}`;
+  const showAll = remember(showAllKey) === '1';
+  const shown = showAll ? ordered : ordered.slice(0, PAGE);
+  for (const r of shown) box.append(backlogRow(r));
+
+  if (ordered.length > shown.length) {
+    box.append(el('button', { class: 'row-more', type: 'button',
+      onclick: () => { remember(showAllKey, '1'); render(); } },
+      `Show all ${ordered.length}`));
+  }
+  if (closed.length) {
+    const open = remember(`backlog.closed.${items.length}`) === '1';
+    box.append(el('button', { class: 'row-more', type: 'button',
+      onclick: () => { remember(`backlog.closed.${items.length}`, open ? '0' : '1'); render(); } },
+      open ? `Hide ${closed.length} closed` : `${closed.length} delivered or closed`));
+    if (open) for (const r of closed) box.append(backlogRow(r));
+  }
+  return box;
+}
+
+const priorityRank = (p) => {
+  const list = (state.workspace.vocabulary.priorities || []).map((x) => x.value);
+  const at = list.indexOf(String(p || '').trim());
+  return at < 0 ? list.length : at;
+};
+const idRank = (id) => Number(String(id).replace(/\D+/g, '')) || 0;
+
+function backlogRow(r) {
+  const checked = selected.has(r.id);
+  const row = el('div', { class: `r${checked ? ' r-sel' : ''}${r.draft ? ' r-draft' : ''}` });
+
+  const box = el('input', { type: 'checkbox', class: 'cb', 'aria-label': `Select ${r.id}` });
+  box.checked = checked;
+  box.addEventListener('change', () => {
+    if (box.checked) selected.add(r.id); else selected.delete(r.id);
+    render();
+  });
+  row.append(box);
+  row.append(el('span', { class: 'st', title: ledgerWord(r.entity, r.state) },
+    glyph(r.entity, r.state, boardColumn(r.id))));
+  row.append(el('button', { class: 'idlink', type: 'button',
+    onclick: () => openItemPage(r.id) }, r.id));
+  row.append(el('span', { class: 'r-title grow', text: show(r.title) }));
+  row.append(el('span', {}, stateChip(r.entity, r.state, { column: boardColumn(r.id) })));
+  row.append(el('span', {}, priorityMark(r.priority)));
+  row.append(el('span', { class: 'mono hint', text: isSet(r.points) ? `${r.points}p` : '—' }));
+  row.append(el('span', { class: 'hint r-who',
+    text: isSet(r.assignee) ? nameOf(r.assignee) : '—' }));
+  row.append(r.draft
+    ? el('button', { class: 'btn small primary', type: 'button',
+        onclick: () => {
+          const epic = state.repo.epics.find((e) => e.id === r.epic);
+          detailStoryForm({ id: r.id, title: r.title, priority: r.priority,
+            points: r.points, assignee: r.assignee }, epic);
+        } }, 'Write up')
+    : el('span', {}));
+  return row;
+}
 
 VIEWS.ship = () => {
   const wrap = el('div', {});

@@ -465,6 +465,21 @@ def parse_sprint(lines: list[str]) -> dict:
         value = mdutil.bold_field(lines, label)
         return clean(value) if value is not None else EMPTY
 
+    def sprint_name(value: str) -> str:
+        """Empty when the file is carrying its placeholder rather than a sprint.
+
+        `Sprint.template.md` ships, and `/close-sprint` restores, a friendly
+        line — ``_none yet_ — run `/plan-sprint` to start one.`` — which reads
+        well in Markdown but is not a sprint name. Treat the italic placeholder,
+        and anything that points at the command, as no sprint at all.
+        """
+        text = (value or "").strip()
+        if not text or text == EMPTY:
+            return EMPTY
+        if text.startswith("_") or "/plan-sprint" in text:
+            return EMPTY
+        return text
+
     last_sync = EMPTY
     mask = comment_mask(lines)
     for i, line in enumerate(lines):
@@ -516,7 +531,7 @@ def parse_sprint(lines: list[str]) -> dict:
         sync_log = [strip_links(r) for r in bullets(lines, log_span[0] + 1, log_span[1])]
 
     return {
-        "name": field("Sprint"),
+        "name": sprint_name(field("Sprint")),
         "goal": field("Sprint Goal"),
         "dates": field("Dates"),
         "capacity": field("Capacity (target points)"),

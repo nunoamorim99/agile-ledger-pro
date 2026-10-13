@@ -704,3 +704,132 @@ table.grid.sprints td .hint { margin-top: 2px; }
   .need-act { grid-column: 1 / -1; justify-content: flex-start; }
   .f { grid-template-columns: 1fr; }
 }
+
+/* =======================================================================
+   Sprint — the board, with its own numbers above it.
+   ======================================================================= */
+
+.sprint-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.ex-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+.ex-row .mono { margin-left: auto; color: var(--ink2); }
+.mark-warn { display: inline-flex; align-items: center; gap: 5px; color: var(--warn); }
+
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toolbar .grow { flex: 1 1 auto; }
+
+.board-grid { display: flex; flex-direction: column; gap: 10px; overflow-x: auto; }
+.board-head, .board-row {
+  display: grid; gap: 10px; min-width: 860px;
+  grid-template-columns: 150px repeat(5, minmax(150px, 1fr));
+}
+.board-grid.no-lanes .board-head, .board-grid.no-lanes .board-row {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+.col-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink3); padding: 0 4px 2px;
+}
+.col-head .grow { flex: 1 1 auto; }
+.col-head svg { color: var(--accent); flex: none; }
+.lane-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 6px 0;
+  font-size: 12.5px; font-weight: 550; color: var(--ink2); min-width: 0;
+}
+.lane-head .grow { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell {
+  background: var(--sunken); border-radius: var(--radius-card);
+  padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 58px;
+}
+.cell.drop { outline: 2px dashed var(--accent); outline-offset: -3px; }
+
+.tk {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius-control); padding: 9px 10px; cursor: grab;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tk:hover { border-color: var(--rule2); }
+.tk.dragging { opacity: .45; }
+.tk.is-blocked { border-style: dashed; border-color: var(--crit); }
+.tk.is-early { border-color: var(--warn); }
+.tk-top { display: flex; align-items: center; gap: 7px; }
+.tk-top .st { gap: 0; }
+.tk-top svg { color: var(--accent); }
+.tk-id { font-size: 12px; color: var(--ink2); }
+.tk-top .hint { margin-left: auto; }
+.tk-title { font-size: 13px; line-height: 1.35; }
+.tk-flag { border-radius: 6px; padding: 4px 6px; font-size: 11.5px; }
+.tk-flag.crit { background: var(--crit-soft); }
+.tk-flag.warn { background: var(--warn-soft); }
+.tk-foot { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink3); }
+.tk-who { display: inline-flex; align-items: center; gap: 5px; color: var(--ink2); }
+.tk-meta { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-s { width: 18px; height: 18px; font-size: 9.5px; }
+
+/* =======================================================================
+   Backlog — one outline, filtered and grouped per viewer.
+   ======================================================================= */
+
+.head-meters { display: flex; flex-direction: column; gap: 8px; min-width: 190px; }
+
+.filter {
+  display: inline-flex; align-items: center; height: 30px; padding: 0 10px;
+  border-radius: 8px; border: 1px dashed var(--rule2); background: transparent;
+  color: var(--ink2); font-size: 12.5px; font-weight: 550; cursor: pointer;
+}
+.filter-on { border-style: solid; background: var(--surface); color: var(--ink); }
+
+.selbar { display: none; }
+.selbar.on {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  position: sticky; top: 8px; z-index: 20;
+  background: var(--ink); color: var(--surface);
+  border-radius: var(--radius-control); padding: 8px 12px;
+}
+.selbar .grow { flex: 1 1 auto; }
+.selbar-n { font-size: 12.5px; font-weight: 650; }
+.selbar .btn { background: transparent; border-color: rgba(255, 255, 255, .28); color: var(--surface); }
+.selbar .btn:hover { background: rgba(255, 255, 255, .12); }
+.selbar .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.selbar .btn.ghost { border-color: transparent; color: rgba(255, 255, 255, .72); }
+
+.epic-card { padding: 0; overflow: hidden; }
+.epic-card + .epic-card { margin-top: 14px; }
+.eh { display: flex; align-items: center; gap: 10px; padding: 13px 16px; flex-wrap: wrap; }
+.eh-title { font-size: 14px; font-weight: 650; min-width: 0; }
+.eh .grow { flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chev {
+  background: none; border: 0; padding: 2px; cursor: pointer; color: var(--ink3);
+  display: inline-grid; place-items: center;
+}
+.meter-pair { min-width: 150px; font-size: 11px; }
+
+.r {
+  display: grid; align-items: center; gap: 10px;
+  grid-template-columns: 18px 16px 62px minmax(0, 1fr) 148px 22px 40px 76px 82px;
+  padding: var(--row-pad) 16px; border-top: 1px solid var(--rule); font-size: 13.5px;
+}
+.r-draft { color: var(--ink2); }
+.r-sel { background: var(--accent-soft); }
+.r-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.row-more {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 16px; border: 0; border-top: 1px solid var(--rule);
+  background: transparent; color: var(--accent); font: inherit; font-size: 12.5px;
+  cursor: pointer;
+}
+.row-more:hover { background: var(--sunken); }
+
+@media (max-width: 1100px) {
+  .r { grid-template-columns: 18px 16px 62px minmax(0, 1fr) 130px 22px 40px 82px; }
+  .r > :nth-child(8) { display: none; }
+}
+@media (max-width: 760px) {
+  .board-head, .board-row { min-width: 680px; }
+  .r { grid-template-columns: 18px 16px 58px minmax(0, 1fr) 22px; }
+  .r > :nth-child(5), .r > :nth-child(7), .r > :nth-child(8), .r > :nth-child(9) { display: none; }
+  .selbar.on { position: fixed; left: 12px; right: 12px; bottom: 78px; top: auto; }
+  .head-meters { min-width: 0; width: 100%; }
+}

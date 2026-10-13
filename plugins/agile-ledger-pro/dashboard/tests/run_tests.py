@@ -591,6 +591,100 @@ def test_today_and_health_have_their_inputs():
               "the Definition of Done is available to My work")
 
 
+def test_a_closed_sprint_reads_as_no_sprint():
+    """The placeholder a closed sprint leaves behind is not a sprint name.
+
+    `Sprint.template.md` ships, and `/close-sprint` restores, a friendly line
+    that reads well in Markdown. Taken literally it made the board render a
+    sprint called "_none yet_ — run `/plan-sprint` to start one."
+    """
+    with Ledger() as led:
+        equal(led.repo().sprint()["name"], "2026-S03", "the fixture has a sprint open")
+        led.run("close_sprint")
+        check(mdutil.is_empty(led.repo().sprint()["name"]),
+              "after closing, no sprint is open")
+
+    template = (HERE.parent.parent / "skills" / "agile-ledger-pro" / "references"
+                / "Sprint.template.md")
+    if template.is_file():
+        fresh = parse.parse_sprint(mdutil.split_lines(template.read_text(encoding="utf-8")))
+        check(mdutil.is_empty(fresh["name"]),
+              "a freshly scaffolded Sprint.md has no sprint either")
+
+
+def test_pull_into_a_running_sprint():
+    """Adding work to an open sprint must not disturb the board.
+
+    `plan_sprint` builds a board from nothing, which would drop everything back
+    into To Do. Pulling in appends and leaves the other columns alone.
+    """
+    with Ledger() as led:
+        led.run("plan_sprint", name="2026-S04", goal="g",
+                dates="2026-03-16 → 2026-03-27", capacity="8", items=["US-003"])
+        led.run("move_board_item", item_id="US-003", column="In Progress")
+
+        result = led.run("pull_into_sprint", items=["US-005", "BUG-002"])
+        board = led.repo().sprint()["board"]
+        equal([i["id"] for i in board["In Progress"]], ["US-003"],
+              "work already underway keeps its column")
+        equal([i["id"] for i in board["To Do"]], ["US-005", "BUG-002"],
+              "the pulled items land in To Do")
+        equal(next(s["state"] for s in led.repo().stories() if s["id"] == "US-005"),
+              "In Sprint", "a pulled story moves to In Sprint")
+        equal(next(b["state"] for b in led.repo().bugs() if b["id"] == "BUG-002"),
+              "In Sprint", "a pulled bug moves to In Sprint")
+        check(any("capacity" in w for w in result["warnings"]),
+              "going over capacity is a warning, not a refusal")
+
+        again = led.run("pull_into_sprint", items=["US-005"])
+        check("already on the board" in again["message"],
+              "pulling the same item twice is reported, not duplicated")
+        equal(len(led.repo().sprint()["board"]["To Do"]), 2, "and nothing is duplicated")
+
+        equal(led.run("check")["issues"], [], "the ledger stays consistent")
+
+    with Ledger() as led:
+        # The fixture ships with a sprint open; close it to reach the empty case.
+        led.run("close_sprint")
+        check(mdutil.is_empty(led.repo().sprint()["name"]), "no sprint is open now")
+        try:
+            led.run("pull_into_sprint", items=["US-003"])
+            check(False, "pulling with no open sprint is refused")
+        except actions.ActionError as exc:
+            check("no open sprint" in str(exc), "with a message that says why")
+
+
+def test_move_a_story_to_another_epic():
+    """Reparenting moves the index line as well as the Parent field."""
+    with Ledger() as led:
+        before = {e["id"]: [i["id"] for i in e["stories"]] for e in led.repo().epics()}
+        equal(before["EPIC-001"], ["US-001", "US-002", "US-003", "US-004"], "starting index")
+
+        led.run("move_story_to_epic", story_id="US-003", epic_id="EPIC-002")
+        after = {e["id"]: [i["id"] for i in e["stories"]] for e in led.repo().epics()}
+        check("US-003" not in after["EPIC-001"], "the line leaves the old epic")
+        check("US-003" in after["EPIC-002"], "and joins the new one")
+        equal(next(s["parent"] for s in led.repo().stories() if s["id"] == "US-003"),
+              "EPIC-002", "the story's Parent follows")
+
+        # A Draft lives only as an index line, and must move just the same.
+        led.run("move_story_to_epic", story_id="US-004", epic_id="EPIC-002")
+        after = {e["id"]: [i["id"] for i in e["stories"]] for e in led.repo().epics()}
+        check("US-004" in after["EPIC-002"], "a Draft moves too")
+        check("US-004" not in after["EPIC-001"], "and leaves its old epic")
+
+        again = led.run("move_story_to_epic", story_id="US-003", epic_id="EPIC-002")
+        check("already under" in again["message"], "moving it where it already is says so")
+
+        equal(led.run("check")["issues"], [], "no drift after reparenting")
+
+        try:
+            led.run("move_story_to_epic", story_id="US-003", epic_id="EPIC-404")
+            check(False, "an unknown epic is refused")
+        except actions.ActionError as exc:
+            check("no such epic" in str(exc), "with a message that says why")
+
+
 def test_markdown_helpers():
     lines = ["# T", "<!-- hidden", "- not an idea", "-->", "- real"]
     mask = mdutil.comment_mask(lines)
