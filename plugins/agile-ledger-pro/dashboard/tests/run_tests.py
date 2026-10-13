@@ -962,6 +962,68 @@ def test_fixture_repo_is_current():
         equal(snapshot["layout"]["message"], "", "and raises no banner")
 
 
+def test_shell_classes_are_all_styled():
+    """Every class in the static shell must have a rule behind it.
+
+    The phase-1 brand rules were deleted by a later edit and nothing noticed:
+    index.html still said `class="brand"`, so the mark and the wordmark fell
+    back to inline layout and stopped lining up. A class in the shell with no
+    rule anywhere is that same failure, whatever it is next time.
+    """
+    static = HERE.parent / "static"
+    html = (static / "index.html").read_text(encoding="utf-8")
+    css = ((static / "style.css").read_text(encoding="utf-8")
+           + (static / "tokens.css").read_text(encoding="utf-8"))
+
+    used = set()
+    for attr in re.findall(r'class="([^"]+)"', html):
+        used.update(attr.split())
+    styled = set(re.findall(r"\.([A-Za-z][\w-]*)", css))
+
+    for name in sorted(used):
+        check(name in styled, f"index.html uses .{name} but no stylesheet defines it")
+
+
+def test_brand_row_is_a_centred_flex_row():
+    """The mark and the wordmark sit on one centred row.
+
+    An inline <a> puts a 28px mark on the text baseline instead of beside the
+    text, which is how this regressed once already.
+    """
+    css = (HERE.parent / "static" / "style.css").read_text(encoding="utf-8")
+    rule = re.search(r"^\.brand \{([^}]*)\}", css, re.M)
+    check(rule is not None, "style.css defines a .brand rule")
+    if rule:
+        body = rule.group(1)
+        check("display: flex" in body, ".brand is a flex row")
+        check("align-items: center" in body, ".brand centres the mark against the text")
+        check("gap:" in body, ".brand puts a gap between the mark and the name")
+    for name in ("brand-name", "brand-pro"):
+        check(re.search(r"^\." + name + r" \{", css, re.M) is not None,
+              f"style.css still styles .{name}")
+
+
+def test_control_primitives_survive():
+    """The shared primitives must each keep a base rule of their own.
+
+    Three separate edits have deleted a whole primitive block while leaving
+    every caller untouched: the .btn family went after phase 1, which is why
+    buttons stopped matching each other, and the brand row went the same way.
+    A variant like .btn.primary styles nothing without its base.
+    """
+    css = (HERE.parent / "static" / "style.css").read_text(encoding="utf-8")
+
+    for selector in (".btn", ".control", ".filter", ".menu", ".nav", ".card",
+                     ".brand", ".proj", ".drawer-actions"):
+        check(re.search(r"(?m)^" + re.escape(selector) + r"[ ,]", css) is not None,
+              f"style.css still defines a base {selector} rule")
+
+    # Variants are worthless on their own, so each needs its base present.
+    for variant in re.findall(r"(?m)^\.(\w[\w-]*)\.[\w-]+", css):
+        check(re.search(r"(?m)^\." + variant + r"[ ,{]", css) is not None,
+              f".{variant} has variants but no base rule")
+
+
 def test_commands_contain_no_rebrand_damage():
     """The Pro rebrand must not have rewritten a path or a shell command.
 
