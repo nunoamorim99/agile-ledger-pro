@@ -736,6 +736,10 @@ table.grid.sprints td .hint { margin-top: 2px; }
 }
 .mk-ok  { background: var(--good-soft); color: var(--good); }
 .mk-bad { background: var(--warn-soft); color: var(--warn); }
+/* Nothing in the ledger scores a Definition of Done line, so its marks stay
+   neutral: the list states what Done means here rather than grading it. */
+.mk-flat { background: var(--sunken); color: var(--ink3); }
+.chk-blurb { margin: -2px 0 10px; }
 
 @media (max-width: 980px) {
   .two-col { grid-template-columns: 1fr; }

@@ -2128,23 +2128,51 @@ function findingRow(f, file) {
   return el('div', { class: 'f' }, body, actions);
 }
 
+/** One of the team's own checklists, as written in Definitions.md.
+ *
+ * `fails` says whether a line is being broken right now; pass null when
+ * nothing derives that, and every check reads as a plain statement instead of
+ * a result. Either way the text is the team's, never the dashboard's.
+ */
+function checklistSide(title, lines, blurb, fails) {
+  const card = el('div', { class: 'side-card' },
+    el('h3', { text: title }),
+    el('p', { class: 'hint chk-blurb', text: blurb }));
+  if (!lines.length) {
+    card.append(el('p', { class: 'hint', text: `No ${title} in Definitions.md.` }));
+    return card;
+  }
+  for (const line of lines) {
+    const bad = fails ? fails(line) : false;
+    card.append(el('div', { class: 'chk' },
+      el('span', { class: `mk ${!fails ? 'mk-flat' : bad ? 'mk-bad' : 'mk-ok'}` },
+        bad ? '!' : '✓'),
+      el('span', {}, rich(line))));
+  }
+  return card;
+}
+
 function healthSide(dor, git) {
   const side = el('div', {});
-  const list = (state.repo.definitions && state.repo.definitions.definition_of_ready) || [];
-  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Definition of Ready' }));
-  if (!list.length) {
-    card.append(el('p', { class: 'hint', text: 'No Definition of Ready in Definitions.md.' }));
-  } else {
-    // Which of the team's own checks the failing stories are failing.
-    const failed = new Set(dor.flatMap((f) => f.missing || []));
-    for (const line of list) {
-      const hit = [...failed].find((m) => line.toLowerCase().includes(m.split(' ')[0]));
-      card.append(el('div', { class: 'chk' },
-        el('span', { class: `mk ${hit ? 'mk-bad' : 'mk-ok'}` }, hit ? '!' : '✓'),
-        el('span', {}, rich(line))));
-    }
-  }
-  side.append(card);
+  const defs = state.repo.definitions || {};
+
+  // Which of the team's own checks the failing stories are failing.
+  const failed = new Set(dor.flatMap((f) => f.missing || []));
+  side.append(checklistSide('Definition of Ready',
+    defs.definition_of_ready || [],
+    'What a story needs before it can be pulled into a sprint.',
+    (line) => [...failed].some((m) => line.toLowerCase().includes(m.split(' ')[0]))));
+
+  // The other end of the lifecycle. Nothing in the ledger records which DoD
+  // line a given story met, so these are stated rather than scored -- but the
+  // count says how much work the checklist is standing in front of today.
+  const waiting = (state.repo.sprint.board['In Review'] || []).length
+    + (state.repo.sprint.board['In PR'] || []).length;
+  side.append(checklistSide('Definition of Done',
+    defs.definition_of_done || [],
+    'What has to be true before a story can move to Done.'
+      + (waiting ? ` ${waiting} item(s) are in review or in a PR right now.` : ''),
+    null));
 
   if (git && git.dirty) {
     side.append(el('div', { class: 'side-card', style: 'margin-top:14px' },
