@@ -443,15 +443,6 @@ table.grid.sprints td .hint { margin-top: 2px; }
 }
 
 .rail-foot { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 10px; }
-.who {
-  display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
-  padding: 8px 10px; border-radius: 9px; border: 1px solid var(--rule);
-  background: var(--surface); color: inherit; cursor: pointer; text-align: left;
-}
-.who:hover { background: var(--sunken); }
-.who-text { display: flex; flex-direction: column; min-width: 0; }
-.who-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink3); }
-.who-name { font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .av {
   width: 24px; height: 24px; flex: none; border-radius: 50%;
   display: inline-grid; place-items: center;
@@ -569,8 +560,6 @@ table.grid.sprints td .hint { margin-top: 2px; }
   .rail .brand-name, .rail .brand-pro { display: none; }
   .rail .proj { margin: 0; width: auto; flex: 1 1 auto; }
   .rail-foot { margin: 0; padding: 0; flex-direction: row; align-items: center; gap: 8px; }
-  .rail-foot .who { width: auto; padding: 6px; }
-  .rail-foot .who-text { display: none; }
   .rail-foot .trust { display: none; }
   .main { padding: 16px 14px 84px; }
   .page-title { font-size: 26px; }
@@ -976,14 +965,17 @@ table.grid.sprints td .hint { margin-top: 2px; }
 
 /* ------------------------------------------------------------- menus */
 
-.rail .proj, .rail .who { position: relative; }
+/* Fixed, not absolute. The rail and the modal body are both scroll boxes, so a
+   menu parented inside one was clipped at its edge and scrolled away with it —
+   the project menu ended up stretched down the rail. placeMenu() in app.js sets
+   left/top from the button's own viewport rect, flipping up when the window
+   runs out below. */
 .menu {
-  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 70;
+  position: fixed; top: 0; left: 0; z-index: 70;
   background: var(--surface); border: 1px solid var(--rule2);
   border-radius: var(--radius-control); box-shadow: var(--shadow);
   padding: 5px; max-height: 320px; overflow-y: auto; min-width: 212px;
 }
-.rail-foot .menu { top: auto; bottom: calc(100% + 6px); }
 .menu-title {
   font-size: 10.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase;
   color: var(--ink3); padding: 7px 9px 5px;
@@ -1002,9 +994,7 @@ table.grid.sprints td .hint { margin-top: 2px; }
 .menu-tail { font-size: 11px; color: var(--ink3); flex: none; }
 
 @media (max-width: 760px) {
-  /* The rail is a strip on a phone; hang the menu off the button instead. */
-  .menu { left: 0; right: auto; min-width: 232px; max-width: 80vw; }
-  .rail-foot .menu { bottom: auto; top: calc(100% + 6px); }
+  .menu { max-width: min(92vw, 360px); }
   .r-epic { grid-template-columns: 18px 16px 62px minmax(0, 1fr) 22px; }
   .r-epic > :nth-child(6), .r-epic > :nth-child(7),
   .r-epic > :nth-child(8), .r-epic > :nth-child(9) { display: none; }

@@ -15,7 +15,6 @@ const state = {
   workspace: null,
   repo: null,
   slug: null,
-  person: '',
   route: null,
   revision: 0,
   commands: null,
@@ -296,7 +295,9 @@ function dateInput(name, value, onChange) {
 }
 
 function openCalendar(anchor, value, onPick) {
+  const toggle = openMenu && openMenu.anchor === anchor;
   closeMenu();
+  if (toggle) return;
   const selected = parseDay(value) || new Date();
   let cursor = new Date(selected.getFullYear(), selected.getMonth(), 1);
 
@@ -330,15 +331,10 @@ function openCalendar(anchor, value, onPick) {
     panel.append(el('div', { class: 'cal-foot' },
       el('button', { class: 'btn small ghost', type: 'button',
         onclick: () => { closeMenu(); onPick(fmtDay(new Date())); } }, 'Today')));
+    if (openMenu === panel) placeMenu(anchor, panel);
   };
   draw();
-  const host = (anchor.closest && anchor.closest('.menu-anchor')) || anchor.parentNode;
-  host.append(panel);
-  openMenu = panel;
-  setTimeout(() => {
-    document.addEventListener('click', onMenuOutside, true);
-    document.addEventListener('keydown', onMenuKey, true);
-  }, 0);
+  mountMenu(anchor, panel);
 }
 
 const isoDay = (offset) => {
@@ -635,10 +631,14 @@ function sectionHead(title, sub, ...actions) {
     el('span', { class: 'grow' }), ...actions);
 }
 
-function matchesPerson(assignee) {
-  if (!state.person) return true;
-  return nameOf(assignee).toLowerCase() === state.person.toLowerCase();
-}
+/* There is no global "viewing as" any more: every view shows the whole team,
+ * and you narrow it where the question is asked — the Backlog's Assignee
+ * filter, or the My work lens, which is about whoever `Me` names in Settings. */
+const myName = () => {
+  const config = state.repo && state.repo.definitions && state.repo.definitions.config;
+  // Me may be written with or without the @ that assignee lines carry.
+  return nameOf(isSet(config && config.Me) ? config.Me : '');
+};
 
 /* ------------------------------------------------------------------ views */
 
@@ -677,12 +677,6 @@ VIEWS.overview = () => {
     sectionHead('Velocity', 'how much the team actually completes'),
     velocityChart(repo.history.sprints)));
 
-  const mine = repo.stories.filter((x) => x.state === 'In Sprint' && matchesPerson(x.assignee));
-  if (state.person) {
-    wrap.append(el('section', { class: 'section' },
-      sectionHead(`${state.person}'s sprint work`, `${mine.length} item(s)`),
-      mine.length ? storyTable(mine) : el('p', { class: 'empty', text: 'Nothing assigned in this sprint.' })));
-  }
   return wrap;
 };
 
@@ -734,63 +728,6 @@ VIEWS.ideas = () => {
   return wrap;
 };
 
-VIEWS.epics = () => {
-  const repo = state.repo;
-  const wrap = el('div', {});
-  wrap.append(sectionHead('Epics', `${repo.epics.length} epic(s) · status and totals are derived from the stories`,
-    el('button', { class: 'btn', type: 'button', onclick: newEpicForm }, 'New epic')));
-
-  if (!repo.epics.length) return (wrap.append(el('p', { class: 'empty', text: 'No epics yet.' })), wrap);
-
-  for (const epic of repo.epics) {
-    const roll = epic.rollup;
-    const card = el('div', { class: 'epic' },
-      el('div', { class: 'epic-head' },
-        el('div', { class: 'grow' },
-          el('div', { class: 'chips' },
-            el('span', { class: 'id', text: epic.id }), stateChip('epic', epic.state),
-            isSet(epic.target) ? badge(`target ${epic.target}`) : null,
-            isSet(epic.area) ? badge(epic.area) : null),
-          el('h3', { style: 'margin-top:6px', text: show(epic.title) }),
-          isSet(epic.goal) ? prose(epic.goal, 'p', { class: 'goal' }) : null),
-        el('div', { class: 'progress' },
-          el('div', { class: 'hint', style: 'margin-bottom:3px', text: 'Stories' }),
-          meter(roll.stories_done, roll.stories_total),
-          el('div', { class: 'hint', style: 'margin:8px 0 3px', text: 'Points' }),
-          meter(roll.points_done, roll.points_total))));
-
-    const rows = epic.stories.filter((i) => matchesPerson(i.assignee));
-    if (rows.length) {
-      const table = el('table', { class: 'grid', style: 'margin-top:12px' },
-        el('thead', {}, el('tr', {},
-          ['ID', 'Title', 'State', 'Pri', 'Pts', 'Assignee', ''].map((h) => el('th', { text: h })))),
-        el('tbody', {}, rows.map((item) => {
-          const detailed = repo.stories.some((s) => s.id === item.id);
-          return el('tr', { class: 'row-link' },
-            el('td', { class: 'id', text: item.id }),
-            el('td', { text: show(item.title) }),
-            el('td', {}, stateChip('story', indexState(item.state),
-              { column: boardColumn(item.id) })),
-            el('td', {}, priorityMark(item.priority)),
-            el('td', { class: 'num', text: show(item.points) }),
-            el('td', { text: show(item.assignee) }),
-            el('td', {}, detailed
-              ? el('button', { class: 'btn small', type: 'button', onclick: () => openItem(item.id) }, 'Open')
-              : el('button', { class: 'btn small primary', type: 'button', onclick: () => detailStoryForm(item, epic) }, 'Detail')));
-        })));
-      card.append(table);
-    }
-
-    if (epic.history && epic.history.length) {
-      card.append(el('div', { class: 'detail-block', style: 'margin-top:12px' },
-        el('h4', { text: 'History' }),
-        el('ul', {}, epic.history.map((h) => prose(h, 'li')))));
-    }
-    wrap.append(card);
-  }
-  return wrap;
-};
-
 function storyTable(stories) {
   return el('table', { class: 'grid' },
     el('thead', {}, el('tr', {},
@@ -805,67 +742,6 @@ function storyTable(stories) {
         el('td', { class: 'id', text: show(story.parent) }),
         el('td', { text: show(story.assignee) })))));
 }
-
-VIEWS.stories = () => {
-  const repo = state.repo;
-  const wrap = el('div', {});
-  const states = state.workspace.vocabulary.story_states;
-  wrap.append(sectionHead('User stories', `${repo.stories.length} detailed · Draft stories live on their epic`));
-
-  const drafts = repo.epics.flatMap((e) => e.stories.filter((i) => /Draft/.test(i.state || ''))
-    .map((i) => ({ ...i, epic: e })));
-  if (drafts.length) {
-    wrap.append(el('section', { class: 'section' },
-      sectionHead(stateHeading('story', 'Draft'),
-        `${drafts.length} — triaged, not yet detailed`),
-      el('div', { class: 'stack' }, drafts.map((d) =>
-        el('div', { class: 'item' },
-          el('span', { class: 'id', text: d.id }),
-          stateChip('story', 'Draft'),
-          el('div', { class: 'grow', text: show(d.title) }),
-          badge(d.epic.id),
-          el('button', { class: 'btn small primary', type: 'button',
-            onclick: () => detailStoryForm(d, d.epic) }, 'Detail'))))));
-  }
-
-  for (const name of states) {
-    const group = repo.stories.filter((s) => s.state === name && matchesPerson(s.assignee));
-    if (!group.length) continue;
-    const points = group.reduce((sum, s) => sum + num(s.estimate), 0);
-    wrap.append(el('section', { class: 'section' },
-      sectionHead(stateHeading('story', name), `${group.length} · ${points} pts`),
-      storyTable(group)));
-  }
-  return wrap;
-};
-
-VIEWS.bugs = () => {
-  const repo = state.repo;
-  const wrap = el('div', {});
-  wrap.append(sectionHead('Bugs', `${repo.bugs.length} registered · ${repo.bug_inbox.length} untriaged`,
-    el('button', { class: 'btn', type: 'button', onclick: newBugForm }, 'Report bug')));
-
-  for (const name of state.workspace.vocabulary.bug_states) {
-    if (name === 'Inbox') continue;
-    const group = repo.bugs.filter((b) => b.state === name && matchesPerson(b.assignee));
-    if (!group.length) continue;
-    wrap.append(el('section', { class: 'section' },
-      sectionHead(stateHeading('bug', name), `${group.length}`),
-      el('table', { class: 'grid' },
-        el('thead', {}, el('tr', {},
-          ['ID', 'Title', 'Sev', 'Pri', 'Relates to', 'Assignee'].map((h) => el('th', { text: h })))),
-        el('tbody', {}, group.map((bug) =>
-          el('tr', { class: 'row-link', onclick: () => openItem(bug.id) },
-            el('td', { class: 'id', text: bug.id }),
-            el('td', { text: show(bug.title) }),
-            el('td', {}, severityPill(bug.severity)),
-            el('td', {}, priorityMark(bug.priority)),
-            el('td', { class: 'id', text: show(bug.relates_to) }),
-            el('td', { text: show(bug.assignee) })))))));
-  }
-  if (!repo.bugs.length) wrap.append(el('p', { class: 'empty', text: 'No registered bugs.' }));
-  return wrap;
-};
 
 /* The command sheet links back into the page: a command the dashboard can do
  * opens its form, one that is already a view jumps there, and the rest are
@@ -1666,9 +1542,7 @@ const LENS_KEY = 'today.lens';
 
 function currentLens() {
   const stored = remember(LENS_KEY);
-  if (stored === 'pm' || stored === 'me') return stored;
-  // Default to the lens that matches who you are viewing as.
-  return state.person ? 'me' : 'pm';
+  return (stored === 'pm' || stored === 'me') ? stored : 'pm';
 }
 
 VIEWS.today = () => {
@@ -1989,13 +1863,16 @@ function activityFeed() {
 
 function myWorkColumn() {
   const repo = state.repo;
-  const who = state.person;
+  const who = myName();
   const col = el('div', {});
   if (!who) {
     col.append(el('div', { class: 'card needs' },
       el('div', { class: 'need-empty' },
-        el('h3', { text: 'Pick who you are' }),
-        el('p', { text: 'Choose a name under “Viewing as” in the rail and this becomes your work.' }))));
+        el('h3', { text: 'Tell the ledger who you are' }),
+        el('p', { text: 'Set “Me” in Settings and this becomes your work. '
+          + 'It is the same name /my-work uses.' }),
+        el('button', { class: 'btn primary', style: 'margin-top:12px', type: 'button',
+          onclick: () => goTo('settings') }, 'Open Settings'))));
     return col;
   }
 
@@ -2657,11 +2534,18 @@ function applyFilters(rows, filters) {
       if (filters.assignee === '—' ? who : who !== filters.assignee) return false;
     }
     if (filters.priority && (r.priority || '') !== filters.priority) return false;
-    if (state.person && nameOf(r.assignee).toLowerCase() !== state.person.toLowerCase()) {
-      return false;
-    }
     return true;
   });
+}
+
+/* Narrowing by person happens here and nowhere else, so whoever `Me` names in
+ * Settings leads the list and says so — "just mine" is one click. */
+function assigneeOptions() {
+  const me = myName();
+  const others = uniq(backlogRows().map((r) => nameOf(r.assignee)))
+    .filter((a) => a.toLowerCase() !== me.toLowerCase());
+  return [['', 'Assignee'], ['—', 'Unassigned'],
+    ...(me ? [[me, `${me} (me)`]] : []), ...others.map((a) => [a, a])];
 }
 
 const selected = new Set();
@@ -2698,8 +2582,7 @@ VIEWS.backlog = () => {
     type: [['', 'Everything'], ['epic', 'Epics'], ['story', 'Stories'], ['bug', 'Bugs']],
     state: [['', 'State'], ...uniq(backlogRows().map((r) => r.state)).map((s) => [s, s])],
     area: [['', 'Area'], ...uniq(backlogRows().map((r) => r.area)).map((a) => [a, a])],
-    assignee: [['', 'Assignee'], ['—', 'Unassigned'],
-      ...uniq(backlogRows().map((r) => nameOf(r.assignee))).map((a) => [a, a])],
+    assignee: assigneeOptions(),
     priority: [['', 'Priority'],
       ...state.workspace.vocabulary.priorities.map((p) => [p.value, p.name])],
   };
@@ -3977,10 +3860,12 @@ function layoutBanner() {
 }
 
 function render() {
+  // A menu lives on <body>, outside everything this redraws, so a repaint would
+  // otherwise leave one hanging over the new page with a dead anchor.
+  closeMenu();
   if (!state.route) state.route = parseHash();
   renderRail();
   renderTrust();
-  renderPeople();
   renderProject();
 
   const host = document.getElementById('main');
@@ -4019,14 +3904,6 @@ function renderProject() {
   sub.textContent = git && git.git ? `${placement} · ${git.branch}` : placement;
 }
 
-function renderPeople() {
-  // The menu builds its own rows on open; this only paints the rail's face.
-  const label = document.getElementById('who-name');
-  const initial = document.getElementById('who-initial');
-  if (label) label.textContent = state.person || 'Everyone';
-  if (initial) initial.textContent = (state.person || '·').charAt(0).toUpperCase();
-}
-
 /* ------------------------------------------------------------- menus ----
  * A small popover anchored to a rail button. Built rather than borrowed from a
  * native <select> because each row carries a glyph and a second line, and the
@@ -4039,6 +3916,45 @@ function closeMenu() {
   if (openMenu) { openMenu.remove(); openMenu = null; }
   document.removeEventListener('click', onMenuOutside, true);
   document.removeEventListener('keydown', onMenuKey, true);
+  window.removeEventListener('resize', closeMenu);
+  window.removeEventListener('scroll', closeMenu, true);
+}
+
+/* Menus hang off <body> in a fixed layer rather than sitting inside the element
+ * that opened them. The rail is a 100vh scroll box and the modal body is
+ * another, so an absolutely positioned panel was clipped at the edge of
+ * whichever one it was in — the project menu came out stretched down the rail
+ * instead of sitting under its button. Anchoring to the button's viewport rect
+ * puts every menu where the button is, in the rail, a toolbar or a form alike.
+ */
+function mountMenu(anchor, panel) {
+  document.body.append(panel);
+  openMenu = panel;
+  placeMenu(anchor, panel);
+  setTimeout(() => {
+    document.addEventListener('click', onMenuOutside, true);
+    document.addEventListener('keydown', onMenuKey, true);
+    // Any scroll moves the button out from under the panel, so dismiss it.
+    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('resize', closeMenu);
+  }, 0);
+}
+
+function placeMenu(anchor, panel) {
+  if (!anchor.getBoundingClientRect) return;
+  const at = anchor.getBoundingClientRect();
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 800;
+  // Never narrower than the control it belongs to.
+  panel.style.minWidth = `${Math.round(at.width)}px`;
+  const high = panel.offsetHeight || 300;
+  const wide = panel.offsetWidth || at.width;
+  const roomBelow = vh - at.bottom - 12;
+  const under = roomBelow >= high || roomBelow >= at.top - 12;
+  const top = under ? at.bottom + 6 : Math.max(8, at.top - high - 6);
+  panel.style.top = `${Math.round(Math.min(top, Math.max(8, vh - high - 8)))}px`;
+  panel.style.left = `${Math.round(Math.max(8, Math.min(at.left, vw - wide - 8)))}px`;
+  panel.style.maxHeight = `${Math.round(Math.max(170, vh - top - 12))}px`;
 }
 
 function onMenuOutside(event) {
@@ -4061,7 +3977,9 @@ function onMenuKey(event) {
 }
 
 function showMenu(anchor, title, rows, current, onPick) {
+  const toggle = openMenu && openMenu.anchor === anchor;
   closeMenu();
+  if (toggle) return;
   const menu = el('div', { class: 'menu', role: 'listbox', 'aria-label': title });
   menu.anchor = anchor;
   if (title) menu.append(el('div', { class: 'menu-title', text: title }));
@@ -4078,15 +3996,8 @@ function showMenu(anchor, title, rows, current, onPick) {
         row.sub ? el('span', { class: 'menu-sub', text: row.sub }) : null),
       row.tail ? el('span', { class: 'menu-tail mono', text: row.tail }) : null));
   }
-  const host = (anchor.closest && anchor.closest('.menu-anchor'))
-    || anchor.parentNode || document.body;
-  host.append(menu);
-  openMenu = menu;
-  setTimeout(() => {
-    document.addEventListener('click', onMenuOutside, true);
-    document.addEventListener('keydown', onMenuKey, true);
-    menu.querySelector('.menu-opt')?.focus();
-  }, 0);
+  mountMenu(anchor, menu);
+  setTimeout(() => menu.querySelector('.menu-opt')?.focus(), 0);
 }
 
 function projectMenu(anchor) {
@@ -4098,32 +4009,6 @@ function projectMenu(anchor) {
        : (r.registered ? (isSet(r.status) ? r.status : 'registered') : 'not in the Registry'),
     tail: r.stats ? `${r.stats.ready} ready` : '',
   })), state.slug, (slug) => { if (slug !== state.slug) loadRepo(slug); });
-}
-
-function personMenu(anchor) {
-  const repo = state.repo;
-  const people = new Set();
-  if (repo) {
-    for (const s of repo.stories) if (isSet(s.assignee)) people.add(nameOf(s.assignee));
-    for (const b of repo.bugs) if (isSet(b.assignee)) people.add(nameOf(b.assignee));
-    const me = repo.definitions.config && repo.definitions.config.Me;
-    if (me) people.add(me);
-  }
-  const count = (who) => {
-    if (!repo) return '';
-    const mine = repo.stories.filter((s) => s.state === 'In Sprint'
-      && nameOf(s.assignee).toLowerCase() === who.toLowerCase());
-    return mine.length ? `${mine.length} in sprint` : '';
-  };
-  const rows = [{ value: '', label: 'Everyone', sub: 'no filter' }];
-  for (const who of [...people].sort()) {
-    rows.push({ value: who, label: who, tail: count(who) });
-  }
-  showMenu(anchor, 'Viewing as', rows, state.person, (who) => {
-    state.person = who;
-    remember('person', who);
-    render();
-  });
 }
 
 /* ------------------------------------------------------------- lifecycle */
@@ -4192,8 +4077,6 @@ async function boot() {
 
   const projBtn = document.getElementById('proj');
   if (projBtn) projBtn.addEventListener('click', () => projectMenu(projBtn));
-  const whoBtn = document.getElementById('who');
-  if (whoBtn) whoBtn.addEventListener('click', () => personMenu(whoBtn));
 
   document.addEventListener('keydown', (event) => {
     const palette = document.getElementById('palette');
@@ -4240,7 +4123,6 @@ async function boot() {
     return;
   }
 
-  state.person = remember('person') || '';
   const remembered = remember('repo');
   const preferred = state.workspace.config.default_repo;
   const slug = present.some((r) => r.slug === remembered) ? remembered
