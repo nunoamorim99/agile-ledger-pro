@@ -66,6 +66,44 @@ def find_ledger_root(start: Path | None = None) -> Path | None:
     return None
 
 
+#: Files that, sitting directly at the ledger root, prove a flat layout.
+FLAT_MARKERS = ("Epic-Backlog.md", "Ideas.md", "User-Stories.md", "Backlog.md")
+
+
+def root_layout(root: Path) -> str:
+    """``"flat"`` or ``"nested"`` — where this ledger keeps its eight files.
+
+    * **nested** — the ledger has its own repo and holds one folder per code
+      repo (`<root>/<slug>/Ideas.md`). The model for an org with many repos.
+    * **flat** — the ledger lives *inside* the one project it belongs to, so
+      the eight files sit at the root (`<root>/Ideas.md`) and the extra slug
+      folder would be redundant.
+
+    Evidence on disk wins over the `layout` key in `Config.md`, because a
+    config value can go stale when someone moves files by hand. The key is only
+    consulted for a freshly scaffolded ledger that has no backlog files yet.
+    """
+    if any((root / name).is_file() for name in FLAT_MARKERS):
+        return "flat"
+    configured = read_config(root).get("layout", "").strip().lower()
+    return configured if configured in ("flat", "nested") else "nested"
+
+
+def repo_folder(root: Path, slug: str) -> Path:
+    """Where a repo's eight files live, in either layout."""
+    return root if root_layout(root) == "flat" else root / slug
+
+
+def project_name(root: Path) -> str:
+    """The name to show for a flat ledger: the repo it sits inside."""
+    rows = read_registry(root)
+    for row in rows:
+        slug = row.get("slug", "")
+        if slug and slug not in (".", mdutil.EMPTY):
+            return slug
+    return root.parent.name or root.name
+
+
 def read_config(root: Path) -> dict[str, str]:
     """Parse the fenced ``key: value`` block in the ledger root's Config.md."""
     config: dict[str, str] = {}
@@ -182,9 +220,25 @@ def list_repos(root: Path) -> list[dict[str, str]]:
     with ``registered: False`` rather than hidden — the dashboard should show
     what is on disk, and the fix is a `/register-repo` run.
     """
+    if root_layout(root) == "flat":
+        # One project by definition: the ledger sits inside its own repo.
+        rows = read_registry(root)
+        row = dict(rows[0]) if rows else {}
+        row.update({
+            "slug": project_name(root),
+            "present": True,
+            "registered": bool(rows),
+            "flat": True,
+        })
+        row.setdefault("code_path", "..")
+        row.setdefault("status", "active" if rows else "unregistered")
+        for key in ("remote", "last_sync", "last_swept", "notes"):
+            row.setdefault(key, mdutil.EMPTY)
+        return [row]
+
     rows = read_registry(root)
     known = {r["slug"] for r in rows}
-    repos = [dict(r, registered=True) for r in rows]
+    repos = [dict(r, registered=True, flat=False) for r in rows]
 
     for child in sorted(p for p in root.iterdir() if p.is_dir()):
         if child.name.startswith(".") or child.name in known:
@@ -201,5 +255,6 @@ def list_repos(root: Path) -> list[dict[str, str]]:
                 "notes": mdutil.EMPTY,
                 "present": True,
                 "registered": False,
+                "flat": False,
             })
     return repos

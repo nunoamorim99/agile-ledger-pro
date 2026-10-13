@@ -74,6 +74,7 @@ two git repos at once:
 first heading is `# Agile-Ledger Registry`; never by folder name. `Config.md` keys:
 
 ```
+layout:         nested                     # nested = own ledger repo | flat = inside its one project
 default_repo:   <repo-slug>                # folder commands act on when run from the ledger root
 org:            <github-org-or-owner>      # scanned via gh
 clone_target:   ../                        # where new repos are cloned (relative to the ledger root)
@@ -86,22 +87,78 @@ git_execution:  off                        # off = text only; on = allow git in 
 setup_branch:   agile-ledger-setup         # branch used in a code repo to remove a migrated folder
 ```
 
-Recommended layout: the ledger repo and the code repos as **siblings** under one workspace root. The
-resolver walks up from the cwd and checks each level and its children, so a developer standing in
-`~/Projetos/repo-a` finds `~/Projetos/agile-ledger` without configuring anything.
+## Two placements
+
+The ledger lives in one of two places, chosen once at `/init-ledger` and recorded as `layout`.
+
+**`nested` — the ledger has its own repository**, holding one folder per code repo
+(`<ledger-root>/<repo-slug>/*.md`). The ledger repo and the code repos sit as **siblings** under one
+workspace root. Right for an organisation or anyone with more than one project: a backlog edit never
+lands on a developer's working branch, every project's ledger is in one place, and
+`/workspace-status` reads them all with no code checked out.
+
+```
+~/Projetos/
+├── agile-ledger/     Registry.md · Config.md · repo-a/ · repo-b/
+└── repo-a/ · repo-b/
+```
+
+**`flat` — the ledger lives inside the single project it belongs to**
+(`<project>/agile-ledger/*.md`), so the eight files sit at the ledger root with **no per-repo
+folder**. Right for one person with one repo: nothing extra to clone, and the backlog ships with the
+code. Its commits do appear in the project's history — that is the trade, and it is the one the user
+accepted when they chose it.
+
+```
+project-x/
+├── src/
+└── agile-ledger/     Registry.md · Config.md · the eight files
+```
+
+**Reading the placement.** The files on disk are the answer: a root holding `Epic-Backlog.md` (or
+`Ideas.md`, or a pre-2.0 `Backlog.md`) is **flat**; otherwise it is **nested**. The `layout` key only
+decides a freshly scaffolded ledger that has no backlog files yet. Never infer the placement from the
+folder's name.
+
+In a flat ledger the Registry has exactly **one** row, its folder column is `.`, and the project is
+named by the repo the ledger sits in. `default_repo` is unnecessary there.
+
+The resolver is the same either way: it walks up from the cwd and checks each level **and its
+children**, so it finds `~/Projetos/agile-ledger` from `~/Projetos/repo-a`, and
+`project-x/agile-ledger` from `project-x/src/`, with nothing configured.
 
 ---
 
 ## Commands
 
 ### `/init-ledger [path]`
-Create the ledger repo. Default location: `./agile-ledger` if the cwd looks like a workspace root,
-otherwise ask. Write `Registry.md` + `Config.md` from the templates, ask for the GitHub org and clone
-target, and offer `git init` + a first commit (`chore: init agile-ledger`). Do **not** scan or clone.
-If a ledger root already exists at or above the cwd, say where it is and stop — one ledger per workspace.
+Create the ledger. **Ask which placement first** — it is the one decision that is awkward to undo.
+Propose the fitting default from where the user is standing (inside a code repo → `flat`; in a
+directory holding several code repos → `nested`), name the trade in a line each, and let them choose.
+
+Write `Registry.md` + `Config.md` from the templates, keeping the `# Agile-Ledger Registry` heading
+exactly as it is, and set `layout` to match.
+
+- **`flat`** — scaffold the **eight files at the ledger root** immediately and add the single Registry
+  row (folder `.`, code path `..`, the repo's normalized remote). The project is ready at once;
+  `/register-repo` is not needed. Do **not** `git init`: the ledger belongs to the project's existing
+  repository. Offer the first commit and say the folder travels with the project.
+- **`nested`** — write only the two root files, ask for the GitHub org and clone target, and offer
+  `git init` + a first commit (`chore: init agile-ledger`), telling the user to create the remote and
+  push it themselves. Do **not** scan or clone.
+
+If a ledger root already exists at or above the cwd, say where it is and stop — one ledger per
+workspace.
 
 ### `/register-repo <path|remote> [--from-git]`
 Add one code repo to the ledger.
+
+**In a `flat` ledger there is nothing to register** — it holds exactly one project, already scaffolded
+by `/init-ledger`. If asked to register a second project into one, do not reshape the folder silently:
+explain that a flat ledger belongs to its own repo, and offer the two real options — move the ledger
+out into its own repository (`nested`) so it can hold several projects, or give the other project its
+own flat ledger. Let the user choose.
+
 1. Resolve the repo: a local path, or a remote to clone into `clone_target` (**propose and confirm**
    before cloning).
 2. Derive the slug (lowercase-hyphenated repo name); if it is taken, ask rather than overwrite.

@@ -77,7 +77,24 @@ flowchart LR
 ```
 </details>
 
-## Where it lives
+## Where it lives — you choose
+
+`/init-ledger` asks where the ledger should go before creating anything. Both answers are first-class;
+pick by how many projects you have.
+
+**Inside the project** — one person, one repo. Nothing extra to clone, and the backlog ships with the
+code.
+
+```
+project-x/                       # your repo
+├── src/ · README.md
+└── agile-ledger/                # ← the ledger, committed with the project
+    ├── Registry.md · Config.md
+    └── Ideas.md … Definitions.md    # the eight files, right here
+```
+
+**Its own repository** — an organisation, or more than one project. A backlog edit never lands on a
+developer's working branch.
 
 ```
 ~/Projetos/                      # your workspace root
@@ -89,15 +106,20 @@ flowchart LR
 └── repo-a/ · repo-b/            # the code repos — no ledger files in them
 ```
 
-Run `/init-ledger` once, then `/register-repo` for each project. From inside a code repo the skill walks
-up to the sibling ledger and matches the repo by its git remote, so there is nothing to configure and
-nothing to commit into the codebase. Every command also takes `--repo <slug>` to act on another project
-from anywhere. Already running the pre-2.0 layout? `/migrate-ledger` moves an in-repo `Agile-Ledger/`
+Run `/init-ledger` once. Inside a project it scaffolds the eight files there and then — nothing else to
+do. As its own repo, add each project with `/register-repo`, and every command takes `--repo <slug>` to
+act on another one from anywhere.
+
+Either way the skill finds the ledger the same way: it walks up from wherever you are, checking each
+directory **and its children**, for a `Registry.md` opening with `# Agile-Ledger Registry`. That marker
+heading is the only thing it looks for — never a folder name — so `project-x/agile-ledger` is found
+from `project-x/src/` exactly as `~/Projetos/agile-ledger` is found from `~/Projetos/repo-a`. Nothing to
+configure. Already running the pre-2.0 layout? `/migrate-ledger` moves an in-repo `Agile-Ledger/`
 folder into the ledger repo and then offers to clean the code repo on a branch. If that ledger also
 predates the eight files — a `Backlog.md` rather than `Ideas.md` + `Epic-Backlog.md` +
 `User-Stories.md` + `Bugs.md` — it converts the layout as well, relocating text without rewriting it.
 
-## The eight files it manages (per repo)
+## The eight files it manages (per project)
 
 <p align="center">
   <img src="docs/assets/files.png" alt="The eight files Agile-Ledger Pro manages" width="100%">

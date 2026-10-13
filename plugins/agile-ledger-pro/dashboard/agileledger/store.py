@@ -71,7 +71,10 @@ class Repo:
     def __init__(self, root: Path, slug: str):
         self.root = Path(root)
         self.slug = slug
-        self.path = self.root / slug
+        # A flat ledger lives inside its own project, so its files sit at the
+        # root rather than in a per-repo folder.
+        self.path = resolve.repo_folder(self.root, slug)
+        self.flat = self.path == self.root
         if not self.path.is_dir():
             raise FileNotFoundError(f"no such repo folder in the ledger: {slug}")
         self.files = {name: LedgerFile(self.path / name) for name in LEDGER_FILES}
@@ -143,6 +146,7 @@ class Repo:
             "next_ids": self.next_ids(),
             "missing_files": [n for n, f in self.files.items() if not f.exists],
             "layout": resolve.detect_layout(self.path),
+            "placement": "in-repo" if self.flat else "standalone",
             "stats": self._stats(stories, bugs, epics, sprint),
         }
 

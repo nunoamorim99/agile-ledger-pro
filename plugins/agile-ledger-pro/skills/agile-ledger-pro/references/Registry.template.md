@@ -15,6 +15,9 @@
 
 - **Repo (folder)** — the folder in this ledger repo holding that project's eight ledger files. The slug
   is lowercase-hyphenated; it normally matches the repo name but does not have to.
+  In a **flat** ledger (`layout: flat` — one that lives inside its own project), the eight files sit
+  beside this file rather than in a subfolder, so the single row's folder is `.` and the project is
+  named by the repo the ledger sits in.
 - **Code path** — where the code is checked out, relative to this ledger root (`../repo-a`) or absolute.
   A convenience, refreshed when it goes stale; it is **not** the identity of the repo.
 - **Remote** — the identity key. Matched normalized (no scheme, no credentials, no trailing `.git`,

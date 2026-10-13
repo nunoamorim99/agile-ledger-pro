@@ -6,9 +6,15 @@ Plain-Markdown Scrum/Agile product management for Claude Code. The rules live in
 files inside your code repos**. Read in the Markdown preview (IDs are clickable links); make changes
 through the commands.
 
+`/init-ledger` asks which of two placements to use, and records it as `layout` in `Config.md`:
+
 ```
-~/Projetos/
-├── agile-ledger/            # the ledger repo (its own git repo)
+project-x/                   # layout: flat — the ledger lives in its own project
+├── src/
+└── agile-ledger/            # Registry.md · Config.md · the eight files, together
+
+~/Projetos/                  # layout: nested — the ledger has its own repo
+├── agile-ledger/
 │   ├── Registry.md          # which repos are managed, and where their code is
 │   ├── Config.md            # org, commit/push policy, default repo
 │   ├── repo-a/              # the eight ledger files for repo-a
@@ -16,8 +22,8 @@ through the commands.
 └── repo-a/ · repo-b/        # the code repos — clean
 ```
 
-Run `/init-ledger` once, then `/register-repo` per project (or `/migrate-ledger` to move a pre-2.0
-in-repo ledger across). From inside a code repo the skill finds the sibling ledger automatically; every
+Run `/init-ledger` once; a flat ledger is ready immediately, a nested one takes `/register-repo` per
+project (or `/migrate-ledger` to move a pre-2.0 in-repo ledger across). From inside a code repo the skill finds the sibling ledger automatically; every
 command also takes `--repo <slug>` to act on another project.
 
 ## Commands

@@ -5,6 +5,8 @@
 > `Definitions.md` — this file is only about the ledger itself and the repos it manages.
 
 ```
+layout:         nested                     # nested = own ledger repo, one folder per code repo
+                                           # flat   = this ledger lives inside its one project
 default_repo:   <repo-slug>                # which folder commands act on when run from the ledger root
 org:            <github-org-or-owner>      # the GitHub org/owner scanned via `gh repo list`
 clone_target:   ../                        # where new repos are cloned, relative to this ledger root
@@ -19,6 +21,17 @@ setup_branch:   agile-ledger-setup         # branch used in a code repo to remov
 
 ## Notes
 
+- **`layout`** records where this ledger lives, chosen once at `/init-ledger`.
+  - **`nested`** — the ledger has its own repository and holds one folder per code repo
+    (`<ledger-root>/<repo-slug>/*.md`). Right for an organisation with several projects: a backlog
+    edit never lands on a developer's branch, and every project's ledger sits in one place.
+  - **`flat`** — the ledger lives **inside** the single project it belongs to
+    (`<project>/agile-ledger/*.md`), so the eight files sit at this root with no per-repo folder.
+    Right for one person with one repo: the backlog ships with the code and there is no second
+    repository to clone. Its commits do appear in the project's history, which is the trade.
+
+  The files on disk are the real answer — a root holding `Epic-Backlog.md` is flat whatever this key
+  says — so this value only matters for a freshly scaffolded ledger that has no backlog yet.
 - **`ledger_commit`** governs commits **in this ledger repo**: `confirm` offers one commit per command
   (`ledger(repo-a): US-014 → Done (sprint 7)`), `auto` commits without asking, `off` leaves the working
   tree dirty for you to commit yourself with `/ledger-commit`.

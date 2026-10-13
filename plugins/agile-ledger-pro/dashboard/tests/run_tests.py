@@ -414,6 +414,98 @@ def test_markdown_helpers():
     equal(rows, [["1", "2"]], "table rows")
 
 
+def _flat_ledger(tmp: Path) -> Path:
+    """A ledger living inside its own project, the way /init-ledger scaffolds it."""
+    project = tmp / "project-x"
+    (project / "src").mkdir(parents=True)
+    ledger = project / "agile-ledger"
+    ledger.mkdir()
+    (ledger / "Registry.md").write_text(
+        "# Agile-Ledger Registry\n\n"
+        "| Repo (folder) | Code path | Remote | Status |\n|---|---|---|---|\n"
+        "| . | .. | git@github.com:me/project-x.git | active |\n", encoding="utf-8")
+    (ledger / "Config.md").write_text(
+        "# Ledger Config\n\n```\nlayout: flat\nledger_commit: confirm\n```\n", encoding="utf-8")
+    for name in LEDGER_FILES:
+        shutil.copy(FIXTURE / "demo-app" / name, ledger / name)
+    return ledger
+
+
+def test_flat_ledger_inside_its_project():
+    """The in-repo placement: the eight files sit at the ledger root."""
+    tmp = Path(tempfile.mkdtemp(prefix="agile-ledger-flat-"))
+    try:
+        ledger = _flat_ledger(tmp)
+
+        equal(resolve.root_layout(ledger), "flat", "a root holding the eight files is flat")
+        equal(resolve.repo_folder(ledger, "anything"), ledger,
+              "a flat ledger's repo folder is the root itself")
+        equal(resolve.project_name(ledger), "project-x",
+              "the project is named by the repo the ledger sits in")
+
+        # Found from inside the project, exactly as from a sibling code repo.
+        for start in (tmp / "project-x", tmp / "project-x" / "src", ledger):
+            equal(resolve.find_ledger_root(start), ledger,
+                  f"the flat ledger is found from {start.name}")
+
+        repos = resolve.list_repos(ledger)
+        equal(len(repos), 1, "a flat ledger holds exactly one project")
+        equal(repos[0]["slug"], "project-x", "listed under the project's name")
+        check(repos[0]["flat"], "the row is flagged flat")
+        check(repos[0]["present"], "and present")
+
+        repo = Repo(ledger, repos[0]["slug"])
+        snapshot = repo.snapshot()
+        equal(snapshot["placement"], "in-repo", "the snapshot reports the placement")
+        equal(snapshot["layout"]["era"], "current", "and no pre-2.0 banner")
+        equal(len(snapshot["stories"]), 4, "stories parse from the flat root")
+        equal(len(snapshot["epics"]), 2, "epics parse from the flat root")
+
+        # Writing must work the same, and must stay inside the ledger folder.
+        actions.run(Repo(ledger, "project-x"), "add_idea", {"text": "works in a flat ledger"})
+        ideas = Repo(ledger, "project-x").ideas()
+        equal(ideas[0]["text"], "works in a flat ledger", "a write lands in the flat root")
+        check((ledger / "Ideas.md").is_file(), "Ideas.md is at the ledger root")
+        check(not (tmp / "project-x" / "Ideas.md").exists(),
+              "nothing is written outside the ledger folder")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_nested_ledger_is_unaffected():
+    with Ledger() as led:
+        equal(resolve.root_layout(led.root), "nested",
+              "a root with per-repo folders stays nested")
+        equal(resolve.repo_folder(led.root, "demo-app"), led.root / "demo-app",
+              "a nested repo folder is root/slug")
+        snapshot = led.repo().snapshot()
+        equal(snapshot["placement"], "standalone", "the snapshot reports standalone")
+        rows = {r["slug"]: r for r in resolve.list_repos(led.root)}
+        check(not rows["demo-app"]["flat"], "nested rows are not flagged flat")
+
+
+def test_layout_key_only_decides_an_empty_ledger():
+    """Disk evidence beats the config key, so a stale value cannot mislead."""
+    tmp = Path(tempfile.mkdtemp(prefix="agile-ledger-layout-key-"))
+    try:
+        root = tmp / "ledger"
+        root.mkdir()
+        (root / "Registry.md").write_text("# Agile-Ledger Registry\n", encoding="utf-8")
+        (root / "Config.md").write_text("```\nlayout: flat\n```\n", encoding="utf-8")
+        equal(resolve.root_layout(root), "flat",
+              "an empty ledger takes the layout from Config.md")
+
+        (root / "Config.md").write_text("```\nlayout: nested\n```\n", encoding="utf-8")
+        equal(resolve.root_layout(root), "nested", "and follows the key when it changes")
+
+        # Now put backlog files at the root: the disk says flat whatever the key says.
+        (root / "Epic-Backlog.md").write_text("# Epic Backlog\n", encoding="utf-8")
+        equal(resolve.root_layout(root), "flat",
+              "files at the root beat a stale 'nested' key")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_detects_a_pre_2_0_layout():
     """A relocated pre-2.0 folder must be reported, not rendered as empty.
 

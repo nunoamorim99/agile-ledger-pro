@@ -15,9 +15,14 @@ SKILL ONLY (no slash commands, driven by natural language)
   (the skill auto-triggers when you ask for backlog/sprint work).
 
 FIRST RUN
-  /init-ledger        creates the ledger repository (one folder per code repo, so your
-                      code repos stay clean) with Registry.md + Config.md
-  /register-repo .    adds the project you are standing in
+  /init-ledger        creates the ledger. It ASKS where it should live:
+                        - inside this project  -> project-x/agile-ledger/, the eight
+                          files right there, committed with the code. One repo, one
+                          person: nothing else to clone, and nothing else to run.
+                        - its own repository   -> one folder per code repo, so a
+                          backlog edit never lands on a developer's branch. Right
+                          for an org or several projects.
+  /register-repo .    adds a project -- only needed for the "own repository" shape
   /migrate-ledger     moves a pre-2.0 in-repo Agile-Ledger/ folder into the ledger repo
 
   From inside a code repo the skill walks up to the sibling ledger repo and matches the

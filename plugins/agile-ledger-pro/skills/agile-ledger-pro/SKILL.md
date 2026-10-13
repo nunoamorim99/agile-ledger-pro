@@ -74,6 +74,11 @@ language matches ("new story", "let's plan the sprint", "what merged to main"), 
 
 ## Where the ledger lives (resolve this first)
 
+A ledger sits in one of **two placements**, chosen once at `/init-ledger` and recorded as `layout` in
+the ledger root's `Config.md`. Both are first-class; read which one you are in before writing anything.
+
+**`nested` — the ledger has its own repository** (an org, or more than one project):
+
 ```
 <workspace-root>/                 e.g. ~/Projetos/
 ├── agile-ledger/                 ← THE LEDGER REPO — its own git repo, pushed like any other
@@ -85,16 +90,39 @@ language matches ("new story", "let's plan the sprint", "what merged to main"), 
 └── repo-a/ · repo-b/             ← the code repos, with NO ledger files in them
 ```
 
+**`flat` — the ledger lives inside the one project it belongs to** (one person, one repo):
+
+```
+project-x/                        ← the code repo
+├── src/ · README.md              # the project
+└── agile-ledger/                 ← the ledger, committed with the project
+    ├── Registry.md               # the marker; one row, folder `.`
+    ├── Config.md                 # layout: flat
+    └── Ideas.md … Definitions.md # the eight files, at the root — no per-repo folder
+```
+
 A **ledger root** is a directory containing a `Registry.md` whose first heading is
-`# Agile-Ledger Registry`. That heading is the marker — never identify the ledger by folder name.
+`# Agile-Ledger Registry`. That heading is the marker — never identify the ledger by folder name, and
+never by placement.
+
+**Which placement am I in?** The files on disk answer it: a ledger root holding `Epic-Backlog.md`
+(or `Ideas.md`, or a pre-2.0 `Backlog.md`) is **flat**, and every path below reads
+`<ledger-root>/<file>.md` with no repo folder. Otherwise it is **nested** and paths read
+`<ledger-root>/<repo-slug>/<file>.md`. The `layout` key settles only the case where a freshly
+scaffolded ledger has no backlog files yet.
 
 **Resolution order** (run once per session, then cache it):
 
 1. An explicit **`--repo <slug>`** argument on the command wins, as does an explicit path the user gives.
 2. If the cwd is **inside a ledger root**, the active repo is the folder you are in; at the root itself
-   use `default_repo` from `Config.md`, and if that is unset, ask.
+   use `default_repo` from `Config.md`, and if that is unset, ask. In a **flat** ledger the root *is*
+   the project — there is one, so there is nothing to choose and `default_repo` is unnecessary.
 3. Otherwise **walk up** from the cwd (the cwd, then each ancestor, stopping at the home directory):
    at each level check that directory *and its immediate children* for a ledger root. First hit wins.
+   **Never write a ledger file anywhere but the resolved ledger root.** In a nested ledger that means
+   nothing is ever written into a code repo; in a flat one the ledger root is deliberately inside the
+   project, and anything outside it is still off-limits. If a write is about to land somewhere else,
+   the resolution was wrong — stop and resolve again.
 4. **Identify the code repo** against `Registry.md`: match `git remote get-url origin` normalized
    (drop scheme, credentials, trailing `.git`; compare host + path case-insensitively), else the
    absolute code path, else the folder name. The remote is the strongest key — a folder rename does
@@ -109,9 +137,10 @@ A **ledger root** is a directory containing a `Registry.md` whose first heading 
    offer `/migrate-ledger`. If a central folder for the repo *also* exists, treat the **central one as
    the source of truth**, do not merge silently, and tell the user the in-repo copy is now stale.
 
-State the resolution in one line before working, e.g. `Ledger: ~/Projetos/agile-ledger → repo-a`. Every
-file path below is relative to `<ledger-root>/<repo-slug>/`, so the in-folder links between files are
-unchanged. Cross-repo references are possible and written as `../repo-b/User-Stories.md#us-021`.
+State the resolution in one line before working, e.g. `Ledger: ~/Projetos/agile-ledger → repo-a`, or
+`Ledger: project-x/agile-ledger (in-repo)` when it is flat. Every file path below is relative to the
+resolved repo folder — `<ledger-root>/<repo-slug>/` when nested, `<ledger-root>/` when flat — so the
+in-folder links between the eight files are identical in both placements. Cross-repo references are possible and written as `../repo-b/User-Stories.md#us-021`.
 
 ---
 

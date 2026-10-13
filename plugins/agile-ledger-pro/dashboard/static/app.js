@@ -283,8 +283,11 @@ VIEWS.overview = () => {
   const s = repo.stats;
   const wrap = el('div', {});
 
+  const placement = repo.placement === 'in-repo'
+    ? `${repo.slug} · ledger inside this repo`
+    : `${repo.slug} · ledger in its own repo`;
   wrap.append(el('section', { class: 'section' },
-    sectionHead('At a glance', repo.slug),
+    sectionHead('At a glance', placement),
     el('div', { class: 'kpis' },
       kpi('Ready to build', s.ready, `${s.ready_points} pts waiting`),
       kpi('In this sprint', s.in_sprint, isSet(s.sprint_name) ? s.sprint_name : 'no sprint open'),

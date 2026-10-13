@@ -37,6 +37,10 @@ The ledger Markdown is the source of truth; this is a view onto it, not a second
   forever. The next free ID is the greater of the counter and the highest ID actually present, so
   a counter rewound by a bad hand-edit still cannot hand out an ID that is in use.
 - **One writer at a time.** The server serialises writes, so two browser tabs cannot interleave.
+- **Both placements work.** A ledger with its own repo (`layout: nested`) keeps one folder per code
+  repo; a ledger living inside its one project (`layout: flat`) keeps the eight files at its root. The
+  dashboard reads the shape off disk rather than trusting the config key, so a hand-moved folder still
+  resolves, and the Overview says which placement you are in.
 - **It reloads itself.** The page polls the files' modification times, so edits you make through
   Claude in the terminal show up within a couple of seconds. Avoid editing the same item in both
   places at once.
