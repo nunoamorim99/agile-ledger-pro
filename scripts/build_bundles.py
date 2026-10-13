@@ -37,9 +37,10 @@ def _skip_from_bundle(path: Path) -> bool:
     real `# Agile-Ledger Registry` marker, and an installed copy of it sitting
     under .claude/ could be picked up as a ledger root by the resolver.
 
-    `design-handoff/` is the design source of truth for the remaining phases —
-    it belongs in the repository, not in a quarter-megabyte of mockups shipped
-    to everyone who installs the plugin.
+    `design-handoff/` held the mockups the dashboard was built from. It is gone
+    now that every phase is in, but the rule stays: design material belongs in
+    the repository, not in a quarter-megabyte shipped to everyone who installs
+    the plugin. If another handoff lands there, it still cannot ship.
     """
     parts = path.parts
     return ("__pycache__" in parts or "tests" in parts or "design-handoff" in parts
