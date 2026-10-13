@@ -398,7 +398,8 @@ listed here because they gate everything else.
 - **`/my-work <name>`** — One developer's slice of the current sprint: their stories, board column,
   acceptance criteria (from `User-Stories.md`), branch, and any blockers. Read-only. Framed as
   **workload + blockers**, never a ranking. If `<name>` is omitted, use the `Me:` value from
-  `Definitions.md` if set.
+  `Definitions.md` if set. Match the name against the ledger root's `## Team` roster when it has one,
+  so `@ada` and `Ada Lovelace` find the same person's work.
 - **`/start-us <US-ID>`** — Run the **dependency gate**: if any linked dependency is not Done,
   stop and warn, naming it. Otherwise move To Do → In Progress **in `Sprint.md` only** (the epic index
   stays coarse `In Sprint`; the detail stays in `User-Stories.md`) and **offer** the branch
@@ -507,6 +508,10 @@ re-versioned); to change what a story did, write a new story under the epic.
 - **Velocity**: sum of completed points per sprint, in `Sprints-History.md`, used to size `/plan-sprint`.
   A **team** metric.
 - **Assignee** (optional): surfaces **workload and blockers**, never a productivity leaderboard.
+  Written `@name`. The ledger root's `Config.md` may carry a `## Team` roster of names, roles and
+  GitHub handles — offer those names rather than asking for one to be retyped, and resolve a handle
+  to its person. A role in that roster is a **label, never a permission**: see the workspace skill
+  for why nothing can be gated on it, and for the `CODEOWNERS` setup that does protect this file.
 
 ---
 

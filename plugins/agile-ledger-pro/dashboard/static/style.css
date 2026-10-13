@@ -1191,6 +1191,41 @@ select { color-scheme: inherit; }
 }
 .checkrow input { flex: 1 1 auto; }
 
+/* ------------------------------------------------------- the team roster */
+
+/* Name, role and handle on one line, the role narrow because its values are
+   two or three letters. A grid rather than flex so the three columns line up
+   down the list instead of each row sizing itself. */
+.teamrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px minmax(0, 1fr) auto;
+  gap: 10px; align-items: center;
+  padding: 8px 18px; border-top: 1px solid var(--rule);
+}
+
+/* Where the enforcement actually is. Set apart from the roster above it,
+   because the roster is a label and this is the part that binds. */
+.owners {
+  padding: 14px 18px 16px; border-top: 1px solid var(--rule);
+  background: var(--sunken);
+}
+.owners h3 { margin: 0 0 6px; font-size: 13px; font-weight: 650; }
+.owners .hint { margin: 0 0 8px; max-width: 72ch; }
+.owners-file {
+  margin: 0; padding: 10px 12px; overflow-x: auto;
+  background: var(--surface); border: 1px solid var(--rule2);
+  border-radius: var(--radius-control);
+  font-size: 12.5px; line-height: 1.6; color: var(--ink2);
+}
+
+@media (max-width: 760px) {
+  /* Name and role take a line each; the handle shares its line with Remove,
+     which is the only pairing narrow enough to read. */
+  .teamrow { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 14px; }
+  .teamrow > input:first-child,
+  .teamrow .menu-anchor { grid-column: 1 / -1; }
+}
+
 /* --------------------------------------------------------- the toolbar */
 
 .toolbar {

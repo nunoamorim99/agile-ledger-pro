@@ -19,6 +19,29 @@ git_execution:  off                        # off = branch/commit/PR text only, o
 setup_branch:   agile-ledger-setup         # branch used in a code repo to remove a migrated ledger folder
 ```
 
+## Team
+
+Who is on this team, and in which role. Roles: `PO` · `PM` · `SM` · `Dev` · `QA` · `Design`.
+
+| Name | Role | GitHub |
+|---|---|---|
+<!-- | Ada Lovelace | PO | @ada | -->
+<!-- | Grace Hopper | Dev | @grace | -->
+
+> **This is a roster, not a permission list.** The ledger is Markdown in a git repo, so everyone who
+> can clone it can read *and* edit every file here, whatever this table says — and the dashboard is a
+> server each person runs on their own machine, with no accounts and no authentication. Nothing in the
+> skill can stop a developer from opening this file.
+>
+> What the roster is for: the dashboard offers these names when you assign work instead of asking you
+> to retype them, `Me:` resolves whether it is written as a handle or a display name, and `/init-ledger`
+> turns the `PO`/`PM` rows into the `CODEOWNERS` file below.
+>
+> **To make the rules actually protected**, use your git host. A `CODEOWNERS` file at the ledger root —
+> `/Config.md @ada` and `/*/Definitions.md @ada` — plus branch protection on `main` requiring code-owner
+> review means a developer can still edit the Definition of Done locally, but the change cannot land
+> without the PO approving it. That is enforced by GitHub, not by us, which is exactly why it holds.
+
 ## Notes
 
 - **`layout`** records where this ledger lives, chosen once at `/init-ledger`.

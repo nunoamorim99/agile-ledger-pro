@@ -87,6 +87,45 @@ git_execution:  off                        # off = text only; on = allow git in 
 setup_branch:   agile-ledger-setup         # branch used in a code repo to remove a migrated folder
 ```
 
+`Config.md` also holds the team, under a `## Team` heading — optional, and absent in older ledgers:
+
+```
+| Name | Role | GitHub |
+|---|---|---|
+| Ada Lovelace | PO | @ada |
+| Grace Hopper | Dev | @grace |
+```
+
+Roles are `PO` · `PM` · `SM` · `Dev` · `QA` · `Design`, matched case-insensitively and through the
+obvious synonyms (`Product Owner`, `developer`, `tester`, `ux`); an unrecognised role is kept as
+written rather than coerced. Use the roster when a command needs a person: to offer names for
+`Assignee` instead of asking the user to retype one, and to resolve `Me:` in a project's
+`Definitions.md` whether it is written as a handle (`@ada`) or a display name (`Ada Lovelace`) —
+`@ada` and `Ada Lovelace` are the same person, and `/my-work` must treat them so.
+
+## Roles are a roster, not permissions
+
+**Never tell a user that a role in this file restricts anything, and never gate a command on one.**
+The ledger is Markdown in a git repo: everyone who can clone it can read *and* edit every file,
+`Config.md` included. The dashboard is a server each person runs on their own machine against their
+own clone, with no authentication and no accounts. There is no place in this design where a role
+could be checked, and a command that pretended otherwise would be lying to the user about a
+protection they do not have.
+
+What *does* enforce it is the git host. When a team asks how to stop the Definition of Done or the
+estimation scale being changed without the Product Owner, the answer is a `CODEOWNERS` file at the
+ledger root naming the `PO`/`PM` handles from the roster:
+
+```
+/Config.md          @ada
+/*/Definitions.md   @ada          # layout: flat → /Definitions.md
+```
+
+plus branch protection on `ledger_branch` requiring code-owner review. A developer can still edit
+those files locally; the change cannot reach the branch without the owner approving the PR. Say both
+halves when you offer it: `CODEOWNERS` alone does nothing until branch protection is switched on in
+the repository's settings, which is a manual step you cannot do for them.
+
 ## Two placements
 
 The ledger lives in one of two places, chosen once at `/init-ledger` and recorded as `layout`.

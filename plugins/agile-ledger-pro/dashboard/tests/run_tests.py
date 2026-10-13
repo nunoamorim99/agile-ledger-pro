@@ -25,8 +25,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from agileledger import actions, mdutil, parse, render, resolve  # noqa: E402
-from agileledger.model import (BUG_STATES, EPIC_STATES, LEDGER_FILES,  # noqa: E402
-                               STORY_STATES)
+from agileledger.model import (BUG_STATES, CONFIG_OWNERS, EPIC_STATES,  # noqa: E402
+                               LEDGER_FILES, ROLES, STORY_STATES,
+                               normalise_role)
 from agileledger.store import Repo  # noqa: E402
 
 FIXTURE = HERE / "fixture"
@@ -451,8 +452,13 @@ def test_workspace_vocabulary_carries_the_ledgers_own_words():
 
         for key in ("story_states", "bug_states", "epic_states", "board_columns",
                     "priorities", "severities", "layers", "fibonacci", "files",
-                    "labels"):
+                    "labels", "roles", "config_owners"):
             check(key in vocabulary, f"vocabulary exposes {key}")
+
+        equal([r["value"] for r in vocabulary["roles"]], ROLES,
+              "the roster's roles come from the server too")
+        equal(vocabulary["config_owners"], CONFIG_OWNERS,
+              "and which of them the CODEOWNERS lines name")
 
         equal(vocabulary["epic_states"], EPIC_STATES, "epic states are published")
         labels = vocabulary["labels"]
@@ -765,6 +771,119 @@ def test_settings_edit_the_two_config_files():
               "an empty edit does nothing")
         equal(led.run("update_project_config", values={"Me": "Nuno Amorim"})["message"],
               "Nothing to change", "and so does setting a value to what it already is")
+
+
+def test_team_roster_is_read_from_config():
+    """The `## Team` table in the ledger root's Config.md.
+
+    A roster of people, which is all it is — nothing here is consulted before
+    an action runs, because nothing in a Markdown ledger could enforce it. What
+    it has to get right is matching: a story filed under `@rita` and a roster
+    row reading `Rita` are the same person, or none of the UI that leans on
+    this works.
+    """
+    with Ledger() as led:
+        team = resolve.read_team(led.root)
+        equal([p["name"] for p in team], ["Nuno", "Rita", "Leo", "Sofia"],
+              "every row is read, in file order")
+        equal([p["role"] for p in team], ["PO", "Dev", "Dev", "QA"],
+              "with their roles")
+        equal(team[0]["role_name"], "Product Owner", "spelled out for the UI")
+        equal(team[0]["handle"], "nuno", "the @ is stripped from the handle")
+        equal(team[3]["handle"], "", "and a missing handle reads as empty, not as a dash")
+
+        equal(resolve.config_owners(led.root), ["nuno"],
+              "only the owning roles reach CODEOWNERS")
+
+        # A ledger with no roster is the normal case, not an error.
+        bare = led.root / "Config.md"
+        bare.write_text("# Ledger Config\n\n```\norg: acme\n```\n", encoding="utf-8")
+        equal(resolve.read_team(led.root), [], "no section reads as nobody")
+        equal(resolve.config_owners(led.root), [], "and names no owner")
+
+    # However people actually write a role, it lands in one bucket.
+    for written, canonical in [("PO", "PO"), ("po", "PO"), ("Product Owner", "PO"),
+                               ("product manager", "PM"), ("Scrum Master", "SM"),
+                               ("developer", "Dev"), ("ENGINEER", "Dev"),
+                               ("tester", "QA"), ("UX", "Design")]:
+        equal(normalise_role(written), canonical, f"{written!r} is a {canonical}")
+    equal(normalise_role("Intern"), "Intern",
+          "an unrecognised role is kept as written, never coerced")
+    equal(normalise_role(""), "", "and a blank one stays blank")
+
+
+def test_team_roster_can_be_rewritten():
+    """Saving the roster rewrites one table and leaves the file alone."""
+    with Ledger() as led:
+        before = (led.root / "Config.md").read_text(encoding="utf-8")
+
+        result = led.run("update_team", people=[
+            {"name": "Nuno Amorim", "role": "Product Owner", "handle": "nuno"},
+            {"name": "Rita", "role": "dev", "handle": "@rita"},
+            {"name": "Ines", "role": "Scrum Master", "handle": ""},
+        ])
+        check("3 people" in result["message"], f"it says what it did: {result['message']!r}")
+        team = resolve.read_team(led.root)
+        equal([p["name"] for p in team], ["Nuno Amorim", "Rita", "Ines"],
+              "the roster is replaced, not appended to")
+        equal([p["role"] for p in team], ["PO", "Dev", "SM"],
+              "roles are normalised on the way in")
+        equal(team[0]["handle"], "nuno", "a handle written either way lands the same")
+
+        after = (led.root / "Config.md").read_text(encoding="utf-8")
+        for marker in ("## Notes", "default_repo:   demo-app", "Who is on this team"):
+            check(marker in after, f"{marker!r} survived the edit")
+        equal(after.count("```"), before.count("```"), "the config fence is intact")
+        equal(after.count("## Team"), 1, "and there is still exactly one roster")
+
+        # Writing the same roster twice must not keep changing the file.
+        led.run("update_team", people=[{"name": "Nuno Amorim", "role": "PO",
+                                       "handle": "nuno"}])
+        once = (led.root / "Config.md").read_text(encoding="utf-8")
+        led.run("update_team", people=[{"name": "Nuno Amorim", "role": "PO",
+                                       "handle": "nuno"}])
+        equal((led.root / "Config.md").read_text(encoding="utf-8"), once,
+              "rewriting the same roster is a no-op on disk")
+
+        # Emptying it is allowed: a team that has not written one down is the
+        # default state, so this must not be refused like a checklist would be.
+        led.run("update_team", people=[])
+        equal(resolve.read_team(led.root), [], "the roster can be emptied")
+        check("## Team" in (led.root / "Config.md").read_text(encoding="utf-8"),
+              "leaving the section and its headings behind")
+
+        # A nameless row is dropped rather than written as a blank person.
+        led.run("update_team", people=[{"name": "", "role": "Dev", "handle": "x"},
+                                       {"name": "Leo", "role": "Dev", "handle": "leo"}])
+        equal([p["name"] for p in resolve.read_team(led.root)], ["Leo"],
+              "a row with no name is dropped")
+
+        equal(led.run("check")["issues"], [], "no drift from editing the roster")
+
+
+def test_team_section_is_created_when_a_ledger_predates_it():
+    """An older ledger has no `## Team`, and saving one must still work."""
+    with Ledger() as led:
+        (led.root / "Config.md").write_text(
+            "# Ledger Config\n\n```\norg: acme\n```\n\n## Notes\n\nSomething here.\n",
+            encoding="utf-8")
+        led.run("update_team", people=[{"name": "Ada", "role": "PM", "handle": "ada"}])
+
+        text = (led.root / "Config.md").read_text(encoding="utf-8")
+        equal([p["name"] for p in resolve.read_team(led.root)], ["Ada"],
+              "the new section parses back")
+        check(text.index("## Team") < text.index("## Notes"),
+              "the roster goes above the prose, not after it")
+        check("Something here." in text, "and the prose is untouched")
+        equal(resolve.config_owners(led.root), ["ada"], "a PM owns the rules too")
+
+        no_notes = led.root / "Config.md"
+        no_notes.write_text("# Ledger Config\n\n```\norg: acme\n```\n", encoding="utf-8")
+        led.run("update_team", people=[{"name": "Ada", "role": "PM", "handle": "ada"}])
+        tail = no_notes.read_text(encoding="utf-8")
+        equal([p["name"] for p in resolve.read_team(led.root)], ["Ada"],
+              "or at the end when there is no prose to sit above")
+        check(not tail.endswith("\n\n"), "without leaving a blank line at the end")
 
 
 def test_settings_edit_the_checklists():
@@ -1122,6 +1241,27 @@ def test_templates_agree_with_the_model():
     registry = (references / "Registry.template.md").read_text(encoding="utf-8")
     check(registry.startswith("# " + resolve.REGISTRY_MARKER),
           "the Registry template still opens with the ledger-root marker")
+
+    # The shipped Config.md has to carry the roster the parser looks for, and
+    # has to keep saying what the roster cannot do — a template that implied
+    # these roles were enforced would be the one lie that matters here.
+    config = (references / "Config.template.md").read_text(encoding="utf-8")
+    check("## Team" in config, "the Config template ships the Team section")
+    for role in ROLES:
+        check(f"`{role}`" in config, f"documenting the {role} role")
+    check("CODEOWNERS" in config, "and points at the one thing that does enforce")
+    for honest in ("not a permission list", "read *and* edit"):
+        check(honest in config, f"the template still says {honest!r}")
+    # The example rows must stay commented out, or every new ledger starts with
+    # two people on it who do not exist. Parsed as a real Config.md to say so.
+    staging = Path(tempfile.mkdtemp(prefix="agile-ledger-template-"))
+    try:
+        (staging / "Config.md").write_text(config, encoding="utf-8")
+        equal(resolve.read_team(staging), [],
+              "the template's example rows are commented out, so they parse as nobody")
+        check("| Ada Lovelace |" in config, "while still showing the shape to copy")
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def main() -> int:

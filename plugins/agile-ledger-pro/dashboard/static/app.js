@@ -244,6 +244,67 @@ function textInput(name, value, placeholder) {
   return el('input', { type: 'text', name, value: value && value !== EMPTY ? value : '', placeholder: placeholder || '' });
 }
 
+// The picker row that swaps itself back to a plain text field.
+const TYPE_A_NAME = '\u0000type';
+
+/** Everyone the assignee control offers: the roster, plus anyone already
+ *  carrying work who was never written into it. */
+function assigneePeople() {
+  const team = roster();
+  const strangers = uniq(backlogRows().map((r) => nameOf(r.assignee)))
+    .filter((a) => a && !personFor(a))
+    .map((a) => ({ name: a, role: '', role_name: 'not on the roster', handle: '' }));
+  return [...team, ...strangers];
+}
+
+/** The assignee control: the roster as a picker, with the typing left in.
+ *
+ * A ledger with no roster keeps the plain text field it always had, because
+ * the roster is optional and nothing may depend on one existing. Where there
+ * is one, picking a person writes their handle when they have one — the form
+ * the ledger already uses for assignees — and shows their name.
+ */
+function assigneeField(name, value) {
+  // Gated on the roster itself, not on who happens to hold work: without one
+  // there is no list to pick from, and labelling every name "not on the
+  // roster" would be noise about a roster the team never wrote.
+  if (!roster().length) return textInput(name, value, 'a name, or blank to unassign');
+  const people = assigneePeople();
+
+  const anchor = el('span', { class: 'menu-anchor' });
+  // Seeded with whatever is already written, so opening a form and closing it
+  // again never rewrites the file just to re-spell a name.
+  const hidden = el('input', { type: 'hidden', name,
+    value: isSet(value) ? nameOf(value) : '' });
+  const button = el('button', { class: 'control pick', type: 'button',
+    'aria-haspopup': 'listbox' },
+    el('span', { class: 'pick-text',
+      text: isSet(hidden.value) ? displayName(hidden.value) : 'Unassigned' }),
+    chevron());
+
+  const rows = [
+    { value: '', label: 'Unassigned' },
+    ...people.map((p) => ({ value: p.handle || p.name, label: p.name,
+      sub: p.role_name || p.role || '', tail: p.handle ? `@${p.handle}` : '' })),
+    { value: TYPE_A_NAME, label: 'Someone else…' },
+  ];
+  button.addEventListener('click', () => showMenu(button, 'Assignee', rows,
+    hidden.value, (picked) => {
+      if (picked === TYPE_A_NAME) {
+        const input = textInput(name, hidden.value, 'a name, or blank to unassign');
+        hidden.remove();                 // the text field carries the name now
+        button.replaceWith(input);
+        input.focus();
+        return;
+      }
+      hidden.value = picked;
+      const text = button.querySelector('.pick-text');
+      if (text) text.textContent = isSet(picked) ? displayName(picked) : 'Unassigned';
+    }));
+  anchor.append(button, hidden);
+  return anchor;
+}
+
 function textArea(name, value, placeholder, rows) {
   const node = el('textarea', { name, placeholder: placeholder || '', rows: rows || 3 });
   node.value = value && value !== EMPTY ? value : '';
@@ -631,13 +692,51 @@ function sectionHead(title, sub, ...actions) {
     el('span', { class: 'grow' }), ...actions);
 }
 
-/* There is no global "viewing as" any more: every view shows the whole team,
- * and you narrow it where the question is asked — the Backlog's Assignee
- * filter, or the My work lens, which is about whoever `Me` names in Settings. */
+/* --------------------------------------------------------------- the team --
+ * The `## Team` roster from the ledger root's Config.md: a name, a role and a
+ * GitHub handle per person. It is a list of people and nothing more — everyone
+ * who can open the ledger can edit every file in it, this server has no
+ * accounts, and no role here is checked before anything happens.
+ *
+ * What it does buy: names to offer instead of asking you to retype one, a
+ * display name for work filed under a handle, and the owner list that goes
+ * into CODEOWNERS, which is where approval can actually be required.
+ *
+ * The roster is optional. Everything below falls back to the names written on
+ * the items themselves, which is all the dashboard had before.
+ */
+const roster = () => (state.workspace && state.workspace.team) || [];
+
+/** The roster entry a written name or handle refers to, if any. */
+function personFor(written) {
+  const key = nameOf(written).toLowerCase();
+  if (!key) return null;
+  return roster().find((p) => String(p.name).toLowerCase() === key
+    || (p.handle && String(p.handle).toLowerCase() === key)) || null;
+}
+
+/** How to show a written assignee: the roster's spelling of them wins. */
+const displayName = (written) => {
+  const person = personFor(written);
+  return person ? person.name : nameOf(written);
+};
+
+/** Do two written names mean the same person? `@rita` and `Rita` do. */
+function samePerson(a, b) {
+  const first = personFor(a);
+  const second = personFor(b);
+  if (first && second) return first.name === second.name;
+  return nameOf(a).toLowerCase() === nameOf(b).toLowerCase();
+}
+
+/* There is no global "viewing as": every view shows the whole team, and you
+ * narrow it where the question is asked — the Backlog's Assignee filter, or
+ * the My work lens, which is about whoever `Me` names in Settings. */
 const myName = () => {
   const config = state.repo && state.repo.definitions && state.repo.definitions.config;
-  // Me may be written with or without the @ that assignee lines carry.
-  return nameOf(isSet(config && config.Me) ? config.Me : '');
+  // `Me: @nuno` and `Me: Nuno` have to find the same work, and only the roster
+  // can reconcile them; without one, the name is taken as written.
+  return displayName(isSet(config && config.Me) ? config.Me : '');
 };
 
 /* ------------------------------------------------------------------ views */
@@ -1085,7 +1184,7 @@ function detailStoryForm(item, epic) {
       field('Layer', selectInput('layer', ['', ...vocab.layers], ''))),
     el('div', { class: 'form-grid' },
       field('Area', textInput('area', epic ? epic.area : '')),
-      field('Assignee', textInput('assignee', item.assignee)),
+      field('Assignee', assigneeField('assignee', item.assignee)),
       field('Dependencies', textInput('dependencies', '', 'US-009, US-012'))),
   ], (data) => act('detail_story', {
       story_id: item.id,
@@ -1109,7 +1208,7 @@ function editStoryForm(story) {
       field('Layer', selectInput('layer', ['', ...vocab.layers], story.layer))),
     el('div', { class: 'form-grid' },
       field('Area', textInput('area', story.area)),
-      field('Assignee', textInput('assignee', story.assignee)),
+      field('Assignee', assigneeField('assignee', story.assignee)),
       field('Dependencies', textInput('dependencies', story.dependencies.join(', ')))),
     field('Notes', textArea('notes', story.notes, '', 2)),
   ], async (data) => {
@@ -1134,7 +1233,7 @@ function editBugForm(bug) {
       field('Estimate', selectInput('estimate', ['', ...vocab.fibonacci], bug.estimate))),
     el('div', { class: 'form-grid' },
       field('Area', textInput('area', bug.area)),
-      field('Assignee', textInput('assignee', bug.assignee)),
+      field('Assignee', assigneeField('assignee', bug.assignee)),
       field('Relates to', textInput('relates_to', bug.relates_to))),
     field('Symptom', textArea('symptom', bug.symptom, '', 2)),
     field('Steps to reproduce', textArea('steps', bug.steps.join('\n'), 'One per line', 3)),
@@ -1876,7 +1975,7 @@ function myWorkColumn() {
     return col;
   }
 
-  const mine = (item) => nameOf(item.assignee).toLowerCase() === who.toLowerCase();
+  const mine = (item) => samePerson(item.assignee, who);
   const board = repo.sprint.board;
   const inColumn = (c) => (board[c] || []).filter((i) => {
     const full = repo.stories.find((s) => s.id === i.id) || repo.bugs.find((b) => b.id === i.id);
@@ -2383,7 +2482,7 @@ function laneSplit(items, lanes) {
   const groups = new Map();
   for (const item of items) {
     let key = '—';
-    if (lanes === 'assignee') key = nameOf(item.assignee) || 'Unassigned';
+    if (lanes === 'assignee') key = displayName(item.assignee) || 'Unassigned';
     else {
       const story = repo.stories.find((s) => s.id === item.id);
       key = (story && story.parent) || 'No epic';
@@ -2489,8 +2588,8 @@ function boardCard(item, column, blocked, early, blockInfo) {
   card.append(el('div', { class: 'tk-foot' },
     isSet(item.assignee)
       ? el('span', { class: 'tk-who' },
-          el('span', { class: 'av av-s', text: nameOf(item.assignee).charAt(0).toUpperCase() }),
-          el('span', { text: nameOf(item.assignee) }))
+          el('span', { class: 'av av-s', text: displayName(item.assignee).charAt(0).toUpperCase() }),
+          el('span', { text: displayName(item.assignee) }))
       : el('span', { class: 'hint', text: 'unassigned' }),
     meta.length ? el('span', { class: 'mono hint tk-meta', text: meta.join(' · ') }) : null));
 
@@ -2559,7 +2658,9 @@ function applyFilters(rows, filters) {
     if (filters.area && (r.area || '') !== filters.area) return false;
     if (filters.assignee) {
       const who = nameOf(r.assignee);
-      if (filters.assignee === '—' ? who : who !== filters.assignee) return false;
+      // Filtering by Rita has to catch the story filed under @rita, so the
+      // comparison is by person rather than by string.
+      if (filters.assignee === '—' ? who : !samePerson(who, filters.assignee)) return false;
     }
     if (filters.priority && (r.priority || '') !== filters.priority) return false;
     return true;
@@ -2567,11 +2668,14 @@ function applyFilters(rows, filters) {
 }
 
 /* Narrowing by person happens here and nowhere else, so whoever `Me` names in
- * Settings leads the list and says so — "just mine" is one click. */
+ * Settings leads the list and says so — "just mine" is one click. The roster
+ * supplies the names where there is one, so a teammate with nothing assigned
+ * yet can still be filtered for; without one, it is whoever holds work. */
 function assigneeOptions() {
   const me = myName();
-  const others = uniq(backlogRows().map((r) => nameOf(r.assignee)))
-    .filter((a) => a.toLowerCase() !== me.toLowerCase());
+  const names = uniq([...assigneePeople().map((p) => p.name),
+    ...backlogRows().map((r) => displayName(r.assignee))]).filter(Boolean);
+  const others = names.filter((a) => !samePerson(a, me));
   return [['', 'Assignee'], ['—', 'Unassigned'],
     ...(me ? [[me, `${me} (me)`]] : []), ...others.map((a) => [a, a])];
 }
@@ -2721,7 +2825,7 @@ function bulkPriority(ids) {
 
 function bulkAssign(ids) {
   openModal(`Assign ${ids.length} item(s)`,
-    [field('Assignee', textInput('assignee', '', 'a name, or blank to unassign'))],
+    [field('Assignee', assigneeField('assignee', ''))],
     async (data) => {
       selected.clear();
       await runBulk('Assigned', ids, (id) => ({
@@ -2901,7 +3005,7 @@ function backlogRow(r) {
   row.append(el('span', {}, priorityMark(r.priority)));
   row.append(el('span', { class: 'mono hint', text: isSet(r.points) ? `${r.points}p` : '—' }));
   row.append(el('span', { class: 'hint r-who',
-    text: isSet(r.assignee) ? nameOf(r.assignee) : '—' }));
+    text: isSet(r.assignee) ? displayName(r.assignee) : '—' }));
   row.append(r.draft
     ? el('button', { class: 'btn small primary', type: 'button',
         onclick: () => {
@@ -3291,6 +3395,8 @@ VIEWS.settings = () => {
       await refreshWorkspaceQuietly();
     }));
 
+  wrap.append(teamCard());
+
   wrap.append(checklistCard('Definition of Ready', 'ready',
     repo.definitions.definition_of_ready || [],
     'What a story needs before it can be pulled into a sprint.'));
@@ -3353,6 +3459,98 @@ function pickField(name, options, value) {
     }));
   anchor.append(button, hidden);
   return anchor;
+}
+
+/** The CODEOWNERS lines this roster implies, or null when it implies none.
+ *
+ * Generated rather than hand-written because the whole point is that it names
+ * the same people the roster does. Nobody with an owning role and a handle
+ * means no lines at all: a CODEOWNERS entry naming nobody protects nothing,
+ * and showing one would be worse than showing none.
+ */
+function codeownersLines() {
+  const owning = (state.workspace.vocabulary.config_owners) || [];
+  const owners = roster()
+    .filter((p) => owning.includes(p.role) && p.handle)
+    .map((p) => `@${p.handle}`);
+  if (!owners.length) return null;
+  const who = owners.join(' ');
+  // A flat ledger keeps its one Definitions.md at the root; a nested one has
+  // a folder per project.
+  const flat = (state.workspace.repos || []).some((r) => r.flat);
+  const paths = ['/Config.md', flat ? '/Definitions.md' : '/*/Definitions.md'];
+  const width = Math.max(...paths.map((p) => p.length)) + 3;
+  return paths.map((p) => p.padEnd(width) + who);
+}
+
+/** The team roster, and the one thing that can actually protect the rules. */
+function teamCard() {
+  const card = el('div', { class: 'card setcard' });
+  const people = roster();
+  card.append(el('div', { class: 'gh' },
+    el('h2', { text: 'Team' }),
+    el('span', { class: 'c mono', text: 'Config.md' })));
+  card.append(el('p', { class: 'hint set-blurb',
+    text: 'Who is on this team, and in which role. These are the names offered when you '
+        + 'assign work, and the ones “Me” is matched against — so a teammate listed here '
+        + 'can be assigned a story before they have one.' }));
+
+  const list = el('div', { class: 'checkedit' });
+  const roles = (state.workspace.vocabulary.roles || []).map((r) => r.value);
+  const addRow = (person) => {
+    const row = el('div', { class: 'teamrow' });
+    const name = el('input', { class: 'control', type: 'text',
+      value: (person && person.name) || '', placeholder: 'Name', 'aria-label': 'Name' });
+    const role = pickField('role', roles, (person && person.role) || 'Dev');
+    const handle = el('input', { class: 'control', type: 'text',
+      value: (person && person.handle) || '', placeholder: 'github-handle',
+      'aria-label': 'GitHub handle' });
+    row.append(name, role, handle,
+      el('button', { class: 'btn small ghost', type: 'button', 'aria-label': 'Remove',
+        onclick: () => row.remove() }, 'Remove'));
+    row.read = () => ({
+      name: String(name.value || '').trim(),
+      role: String((role.querySelector('input') || {}).value || '').trim(),
+      handle: String(handle.value || '').trim().replace(/^@/, ''),
+    });
+    list.append(row);
+    return row;
+  };
+  for (const person of people) addRow(person);
+  card.append(list);
+
+  card.append(el('div', { class: 'setfoot' },
+    el('button', { class: 'btn small', type: 'button',
+      onclick: () => addRow(null) }, 'Add a person'),
+    el('span', { class: 'grow' }),
+    el('button', { class: 'btn primary', type: 'button', onclick: async () => {
+      const rows = [...list.children].map((row) => row.read())
+        .filter((entry) => entry.name);
+      await act('update_team', { people: rows }, 'Team roster saved');
+      await refreshWorkspaceQuietly();
+      render();
+    } }, 'Save')));
+
+  /* The honest part. A role in a Markdown file is a label, so the card says
+   * where the enforcement actually is instead of implying it is here. */
+  const owners = codeownersLines();
+  card.append(el('div', { class: 'owners' },
+    el('h3', { text: 'Who may change the rules' }),
+    el('p', { class: 'hint',
+      text: 'A roster, not a permission list. Everyone who can clone the ledger can read and '
+          + 'edit every file in it, this one included, and the dashboard has no accounts — it '
+          + 'is a server you run on your own machine against your own copy. No role here is '
+          + 'checked before anything happens.' }),
+    el('p', { class: 'hint',
+      text: owners
+        ? 'To require the Product Owner’s approval before the Definition of Done or the '
+          + 'estimation scale changes, put this in CODEOWNERS at the ledger root and turn on '
+          + 'branch protection for the ledger’s main branch. Then the edit can still be made, '
+          + 'but it cannot land without a review — enforced by your git host, which is why it holds.'
+        : 'Give the Product Owner a GitHub handle above and this card will show you the '
+          + 'CODEOWNERS file that makes the rules reviewable.' }),
+    owners ? el('pre', { class: 'owners-file mono', text: owners.join('\n') }) : null));
+  return card;
 }
 
 function checklistCard(title, which, items, blurb) {

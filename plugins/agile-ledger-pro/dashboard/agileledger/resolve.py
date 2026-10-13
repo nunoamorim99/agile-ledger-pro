@@ -125,6 +125,71 @@ def read_config(root: Path) -> dict[str, str]:
     return config
 
 
+TEAM_HEADING = "team"
+
+
+def read_team(root: Path) -> list[dict[str, str]]:
+    """The ``## Team`` roster in the ledger root's Config.md.
+
+    Three columns — name, role, GitHub handle — and the roster is optional: a
+    ledger without the section reads as an empty list and everything that uses
+    it falls back to the names already written on the items.
+
+    This is a roster, **not** an access-control list. See ``model.ROLES`` for
+    why the distinction matters and where the real gate lives.
+    """
+    from .model import normalise_role, ROLE_NAME
+
+    path = root / CONFIG_FILE
+    if not path.is_file():
+        return []
+    lines = mdutil.split_lines(path.read_text(encoding="utf-8"))
+    span = mdutil.find_section(lines, 2, lambda t: TEAM_HEADING == t.strip().lower())
+    if not span:
+        return []
+    headers, rows = mdutil.parse_table(lines, *span)
+    if not headers:
+        return []
+
+    def key(header: str) -> str:
+        header = header.lower()
+        if "role" in header:
+            return "role"
+        if "github" in header or "handle" in header or "@" in header:
+            return "handle"
+        return "name"
+
+    keys = [key(h) for h in headers]
+    out = []
+    for row in rows:
+        entry = {k: clean(v) for k, v in zip(keys, row)}
+        name = mdutil.strip_links(entry.get("name", "")).strip()
+        if not name or name == mdutil.EMPTY:
+            continue
+        role = normalise_role(entry.get("role", ""))
+        handle = entry.get("handle", mdutil.EMPTY)
+        out.append({
+            "name": name,
+            "role": role,
+            "role_name": ROLE_NAME.get(role, role),
+            "handle": "" if handle == mdutil.EMPTY else handle.lstrip("@"),
+        })
+    return out
+
+
+def config_owners(root: Path) -> list[str]:
+    """GitHub handles of whoever owns the rules, for a CODEOWNERS line.
+
+    Empty when the roster names no owner or gives them no handle — a caller
+    must not invent one, because a CODEOWNERS entry naming nobody silently
+    protects nothing.
+    """
+    from .model import CONFIG_OWNERS
+
+    return [p["handle"] for p in read_team(root)
+            if p["role"] in CONFIG_OWNERS and p["handle"]]
+
+
 def read_registry(root: Path) -> list[dict[str, str]]:
     """Rows of the Registry table, as dicts keyed by a normalised column name.
 

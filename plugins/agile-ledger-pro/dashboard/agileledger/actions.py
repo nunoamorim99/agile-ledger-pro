@@ -19,7 +19,7 @@ import re
 import subprocess
 import tempfile
 
-from . import mdutil, render
+from . import mdutil, render, resolve
 from .mdutil import EMPTY
 from .model import (BOARD_COLUMNS, BUG_STATE_EMOJI, BUG_STATES, STORY_STATE_EMOJI,
                     STORY_STATE_LABEL, STORY_STATES, id_rank, link, slugify)
@@ -917,18 +917,21 @@ def update_project_config(repo: Repo, values=None, **_) -> dict:
             "command": "(edit Definitions.md)"}
 
 
-def update_ledger_config(repo: Repo, values=None, **_) -> dict:
-    """The ledger-wide settings in the root's `Config.md`."""
-    values = {k: v for k, v in (values or {}).items() if v is not None}
-    if not values:
-        return {"message": "Nothing to change"}
+def _root_config(repo: Repo) -> tuple:
+    """``(path, lines)`` for the ledger root's Config.md, which sits outside Repo.
+
+    The eight files go through `Repo`'s handles and its atomic save; Config.md
+    belongs to the ledger rather than to any one project, so it is read and
+    written here.
+    """
     path = repo.root / "Config.md"
     if not path.is_file():
         raise ActionError("this ledger has no Config.md")
-    lines = mdutil.split_lines(path.read_text(encoding="utf-8"))
-    if not _set_fenced_keys(lines, values):
-        return {"message": "Nothing to change"}
+    return path, mdutil.split_lines(path.read_text(encoding="utf-8"))
 
+
+def _save_root_config(path, lines: list[str]) -> None:
+    """Write Config.md the same way Repo.save writes the eight: temp + replace."""
     text = "\n".join(lines)
     if not text.endswith("\n"):
         text += "\n"
@@ -941,7 +944,71 @@ def update_ledger_config(repo: Repo, values=None, **_) -> dict:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
+
+
+def update_ledger_config(repo: Repo, values=None, **_) -> dict:
+    """The ledger-wide settings in the root's `Config.md`."""
+    values = {k: v for k, v in (values or {}).items() if v is not None}
+    if not values:
+        return {"message": "Nothing to change"}
+    path, lines = _root_config(repo)
+    if not _set_fenced_keys(lines, values):
+        return {"message": "Nothing to change"}
+    _save_root_config(path, lines)
     return {"message": f"Updated {', '.join(sorted(values))} in Config.md",
+            "command": "(edit Config.md)"}
+
+
+TEAM_BLURB = ("Who is on this team, and in which role. A roster, not a permission "
+              "list: anyone who can read this repo can edit it. What it governs is "
+              "who CODEOWNERS asks to approve a change to the rules.")
+
+
+def update_team(repo: Repo, people=None, **_) -> dict:
+    """Rewrite the `## Team` roster in the ledger root's `Config.md`.
+
+    Writes the section if the ledger predates it, placing it above `## Notes`
+    so the prose stays last. An empty roster is allowed and leaves the table
+    with its headings only — a team that has not written one down is the
+    default state, not an error.
+    """
+    from .model import normalise_role
+
+    rows = []
+    for entry in (people or []):
+        name = str((entry or {}).get("name", "")).strip()
+        if not name or name == EMPTY:
+            continue
+        role = normalise_role((entry or {}).get("role", ""))
+        handle = str((entry or {}).get("handle", "")).strip().lstrip("@")
+        rows.append([name, role or EMPTY, _at(handle)])
+
+    path, lines = _root_config(repo)
+    table = mdutil.render_table(["Name", "Role", "GitHub"], rows)
+    span = mdutil.find_section(lines, 2, lambda t: t.strip().lower() == resolve.TEAM_HEADING)
+
+    if span:
+        start, end = span
+        inner = mdutil.find_table(lines, start, end)
+        if inner:
+            # Keep whatever prose the team wrote around their own roster.
+            lines[inner[0]:inner[1]] = table
+        else:
+            body = mdutil.trim_span(lines, start + 1, end)
+            lines[body[1]:body[1]] = ([""] if body[1] > body[0] else []) + table
+    else:
+        notes = mdutil.find_section(lines, 2, lambda t: t.strip().lower() == "notes")
+        block = ["## Team", "", TEAM_BLURB, "", *table]
+        at = notes[0] if notes else len(lines)
+        while at > 0 and not lines[at - 1].strip():
+            at -= 1                      # sit one blank line below what precedes it
+        # A blank line after it only when something follows; at EOF it would
+        # just be trailing whitespace.
+        lines[at:at] = ["", *block] + ([""] if notes else [])
+
+    _save_root_config(path, lines)
+    return {"message": (f"Team roster saved ({len(rows)} "
+                        f"{'person' if len(rows) == 1 else 'people'})"),
             "command": "(edit Config.md)"}
 
 
@@ -1136,6 +1203,7 @@ ACTIONS = {
     "check": check_ledger,
     "update_project_config": update_project_config,
     "update_ledger_config": update_ledger_config,
+    "update_team": update_team,
     "update_checklist": update_checklist,
 }
 

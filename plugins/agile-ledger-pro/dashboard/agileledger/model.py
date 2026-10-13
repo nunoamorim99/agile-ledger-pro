@@ -99,6 +99,66 @@ LEDGER_FILES = [
 ]
 
 
+# --------------------------------------------------------------------------
+# People
+# --------------------------------------------------------------------------
+
+# The roles the `## Team` roster in the ledger root's Config.md recognises.
+#
+# A role here is a *label*, never a permission. The ledger is Markdown in a git
+# repo: everyone who can read it can edit it, and the dashboard is a server each
+# person runs on their own machine against their own clone, with no accounts and
+# no authentication. Nothing in this codebase can stop a developer from opening
+# Config.md.
+#
+# What the roster does buy is real, which is why it exists: names the dashboard
+# can offer instead of free-text assignees, a `Me` that resolves whether it is
+# written as a handle or a display name, and the owner list `/init-ledger` writes
+# into CODEOWNERS — where the git host *can* enforce that a change to the team's
+# rules needs the PO's approval before it reaches main.
+ROLES = ["PO", "PM", "SM", "Dev", "QA", "Design"]
+
+ROLE_NAME = {
+    "PO": "Product Owner",
+    "PM": "Product Manager",
+    "SM": "Scrum Master",
+    "Dev": "Developer",
+    "QA": "QA",
+    "Design": "Design",
+}
+
+# The roles that own the rules — the Definition of Ready and Done, the estimation
+# scale, the ledger's own config. These become the CODEOWNERS of Config.md and
+# every Definitions.md.
+CONFIG_OWNERS = ["PO", "PM"]
+
+# What people actually type. The roster is written by hand as often as by the
+# dashboard, so "Product Owner", "po" and "PO" all have to land in one bucket.
+ROLE_ALIASES = {
+    "po": "PO", "product owner": "PO", "productowner": "PO", "owner": "PO",
+    "pm": "PM", "product manager": "PM", "productmanager": "PM",
+    "project manager": "PM", "manager": "PM",
+    "sm": "SM", "scrum master": "SM", "scrummaster": "SM",
+    "dev": "Dev", "developer": "Dev", "engineer": "Dev", "eng": "Dev",
+    "devs": "Dev", "development": "Dev",
+    "qa": "QA", "test": "QA", "tester": "QA", "quality": "QA",
+    "design": "Design", "designer": "Design", "ux": "Design", "ui": "Design",
+}
+
+
+def normalise_role(role: str | None) -> str:
+    """Canonical role for whatever was written, or the text itself.
+
+    An unrecognised role is returned unchanged rather than dropped or coerced:
+    the roster belongs to the team, and a dashboard that silently renamed
+    someone's role would be lying about what the file says.
+    """
+    raw = (role or "").strip()
+    if not raw or raw == EMPTY:
+        return ""
+    return ROLE_ALIASES.get(raw.lower(), raw)
+
+
 def priority_rank(priority: str | None) -> int:
     """Sort key: high priority first, unknown last."""
     return PRIORITY_RANK.get((priority or "").strip(), len(PRIORITIES))

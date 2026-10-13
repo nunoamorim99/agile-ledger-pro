@@ -61,8 +61,22 @@ carry a button that opens the right form.
 **Settings** is a screen of its own: everything the skill reads before it acts — this project's
 `Definitions.md` (your name, language, estimation scale, whether git may run in the code repo) and
 the ledger's `Config.md` (placement, default project, org, commit and push policy, branches) — plus
-the team's own Definition of Ready and Definition of Done. Saving writes the same keys a person
-would type, and leaves the comments and alignment in those files exactly where they were.
+the team roster and the team's own Definition of Ready and Definition of Done. Saving writes the
+same keys a person would type, and leaves the comments and alignment in those files exactly where
+they were.
+
+The **team roster** is the `## Team` table in `Config.md`: a name, a role and a GitHub handle per
+person. Those are the names offered when you assign work — so you can assign a story to someone who
+has none yet — and what `Me` is matched against, which is why a story filed under `@rita` shows up
+as Rita and answers a filter for her.
+
+A role in that roster is a **label, not a permission.** Everyone who can clone the ledger can read
+and edit every file in it, this one included, and this server has no accounts — it is something you
+run on your own machine against your own copy, and no role is checked before anything happens. To
+actually require the Product Owner's approval before the Definition of Done or the estimation scale
+changes, protect those files with `CODEOWNERS` and branch protection in the ledger repository; the
+Settings screen shows you the file to use, built from the roster. Then the edit can still be made
+but cannot land without a review — enforced by your git host, which is why it holds.
 
 **It never runs git in a code repo.** `/sync-main`, `/workspace-sync`, `/discover-repos`,
 `/register-repo`, `/init-ledger` and `/migrate-ledger` stay in the Claude Code session: they read

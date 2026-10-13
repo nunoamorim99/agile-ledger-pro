@@ -36,7 +36,22 @@ Place it at `$ARGUMENTS` if given; otherwise `./agile-ledger` for **A** (inside 
 
 **For B (its own repo):** write only `Registry.md` + `Config.md`, ask for the GitHub org/owner and the clone target, and offer `git init` plus a first commit, telling the user to create the remote and push it themselves. Do **not** scan, clone, or register anything — that is `/discover-repos` and `/register-repo`.
 
-## 3. Stop conditions
+## 3. Ask who is on the team, and offer to protect the rules
+
+Ask for the team: a name, a role (`PO` · `PM` · `SM` · `Dev` · `QA` · `Design`) and a GitHub handle each, and write them into the `## Team` table in `Config.md`. Skippable — one person working alone does not need a roster, and it can be filled in later from the dashboard's Settings or by hand. Explain it in one line: these are the names offered when assigning work, and what `Me:` is matched against.
+
+Then, **only when a `PO` or `PM` has a handle**, offer to write `CODEOWNERS` at the ledger root:
+
+```
+/Config.md          @ada
+/*/Definitions.md   @ada          # for layout: flat, this is /Definitions.md
+```
+
+Say plainly what it is for, because it is the only part of this that enforces anything: **the roster is a label, not a permission.** Everyone who can clone the ledger can read and edit every file in it, and the dashboard is a local server with no accounts — so nothing in this skill can stop a developer from editing the Definition of Done. A `CODEOWNERS` file plus branch protection on the ledger's branch means the edit can still be made but cannot *land* without the owner's review. That is enforced by the git host, which is why it holds.
+
+Tell the user the one manual step: branch protection has to be switched on in the repository's settings (or with `gh api`), and `CODEOWNERS` does nothing on its own. Never claim the rules are protected until they confirm they have done it. Skip this whole step for **A** when the ledger has no remote yet, and mention it can be added later.
+
+## 4. Stop conditions
 
 If a ledger root already exists at or above the cwd, report where it is and stop: one ledger per workspace. If the user has pre-2.0 `Agile-Ledger/` folders inside code repos, point them at `/migrate-ledger` next.
 

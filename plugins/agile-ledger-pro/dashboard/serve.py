@@ -30,9 +30,10 @@ sys.path.insert(0, str(HERE))
 from agileledger import actions, commands, resolve  # noqa: E402
 from agileledger.actions import ActionError  # noqa: E402
 from agileledger.model import (BOARD_COLUMNS, BUG_STATE_LABEL, BUG_STATES,  # noqa: E402
-                               EPIC_STATE_LABEL, EPIC_STATES, FIBONACCI, LAYERS,
-                               LEDGER_FILES, PRIORITIES, PRIORITY_NAME,
-                               SEVERITIES, STORY_STATE_LABEL, STORY_STATES)
+                               CONFIG_OWNERS, EPIC_STATE_LABEL, EPIC_STATES,
+                               FIBONACCI, LAYERS, LEDGER_FILES, PRIORITIES,
+                               PRIORITY_NAME, ROLE_NAME, ROLES, SEVERITIES,
+                               STORY_STATE_LABEL, STORY_STATES)
 from agileledger.store import Repo  # noqa: E402
 
 STATIC = HERE / "static"
@@ -68,6 +69,9 @@ class Workspace:
         return {
             "root": str(self.root),
             "config": resolve.read_config(self.root),
+            # The team roster from Config.md. A list of names and roles, which
+            # is all it is: see model.ROLES for why it is not a permission list.
+            "team": resolve.read_team(self.root),
             "repos": repos,
             "git": actions.ledger_status(self.root),
             "vocabulary": {
@@ -80,6 +84,8 @@ class Workspace:
                 "layers": LAYERS,
                 "fibonacci": FIBONACCI,
                 "files": LEDGER_FILES,
+                "roles": [{"value": r, "name": ROLE_NAME[r]} for r in ROLES],
+                "config_owners": CONFIG_OWNERS,
                 # The ledger's own words, emoji and all. The UI draws its own
                 # glyphs but shows these on hover, so a reader can always get
                 # back to the token that is actually written in the file — and
