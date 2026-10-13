@@ -21,8 +21,10 @@ const state = {
   commands: null,
   syncedAt: null,
   externalEdit: false,
+  lastExternal: null,
   pendingOwnWrite: false,
   drift: null,
+  warnings: [],
 };
 
 /* ------------------------------------------------------------------ utils */
@@ -175,6 +177,10 @@ async function act(action, params, successTitle) {
       state.syncedAt = Date.now();
     }
     const warnings = result.warnings || [];
+    for (const message of warnings) {
+      state.warnings.push({ key: `${action}:${message}`, message,
+        when: new Date().toLocaleTimeString() });
+    }
     toast(warnings.length ? 'warn' : 'ok',
       successTitle || result.message || 'Done',
       successTitle ? result.message : null,
@@ -1551,62 +1557,6 @@ const routeKey = (r) => r.name + (r.param ? '/' + r.param : '') + (r.id || '');
 
 /* --------------------------------------------------------------- the rail */
 
-function needsYou() {
-  /* The rules that are pure derivations of the snapshot. Phase 3 builds the
-   * Today screen on top of these; the rail needs the count now. */
-  const repo = state.repo;
-  if (!repo) return [];
-  const out = [];
-  const stories = Object.fromEntries(repo.stories.map((s) => [s.id, s]));
-
-  for (const b of repo.sprint.blocked) {
-    out.push({ kind: 'blocked', id: b.id, title: `${b.id} is blocked`, detail: b.reason });
-  }
-  const waiting = repo.ideas.length + repo.bug_inbox.length;
-  if (waiting) {
-    out.push({ kind: 'triage', title: `${waiting} to triage`,
-      detail: `${repo.ideas.length} idea(s), ${repo.bug_inbox.length} bug report(s)` });
-  }
-  for (const s of repo.stories) {
-    if (s.state !== 'Ready') continue;
-    const missing = [];
-    if (!isSet(s.story)) missing.push('story sentence');
-    if (!s.criteria.length && !s.criteria_met) missing.push('acceptance criteria');
-    if (!isSet(s.estimate)) missing.push('estimate');
-    if (!isSet(s.priority)) missing.push('priority');
-    if (missing.length) {
-      out.push({ kind: 'dor', id: s.id, title: `${s.id} is not Ready`,
-        detail: `missing ${missing.join(', ')}` });
-    }
-  }
-  for (const s of repo.stories) {
-    if (s.state !== 'In Sprint') continue;
-    const unmet = (s.dependencies || []).filter(
-      (d) => stories[d] && stories[d].state !== 'Delivered');
-    if (unmet.length) {
-      out.push({ kind: 'early', id: s.id,
-        title: `${s.id} started before its dependency`,
-        detail: `needs ${unmet.join(', ')}` });
-    }
-  }
-  if (repo.releases.increment.length) {
-    out.push({ kind: 'release',
-      title: `${repo.releases.increment.length} delivered item(s) aren't in a release`,
-      detail: 'the Increment is waiting for a version' });
-  }
-  const git = state.workspace && state.workspace.git;
-  if (git && git.dirty) {
-    out.push({ kind: 'commit', title: `${git.changes.length} uncommitted ledger file(s)`,
-      detail: `on ${git.branch}` });
-  }
-  return out;
-}
-
-function healthCount() {
-  const findings = needsYou().filter((f) => f.kind === 'dor' || f.kind === 'early');
-  return findings.length + (state.drift ? state.drift.length : 0);
-}
-
 function renderRail() {
   const host = document.getElementById('rail-nav');
   const bar = document.getElementById('tabbar');
@@ -1675,23 +1625,163 @@ function renderTrust() {
   }
 }
 
-/* ------------------------------------------------------------- the views */
+/* ===================================================================== rules
+ * Every Needs-you row is a rule over the snapshot. It appears when the rule is
+ * true and disappears when it stops being true — nothing is stored, so the
+ * queue can never disagree with the ledger.
+ */
+
+const RANGE_RE = /\s*(?:→|->|–|—|\bto\b)\s*/;
+
+function splitRange(text) {
+  const parts = String(text || '').split(RANGE_RE).map((s) => s.trim()).filter(Boolean);
+  return parts.length === 2 ? parts : [parts[0] || '', ''];
+}
+
+const asDate = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? new Date(s + 'T00:00:00') : null);
+const dayCount = (a, b) => Math.round((b - a) / 86400000);
+
+/** Day N of M through the current sprint, or null when the dates are absent. */
+function sprintDay(sprint) {
+  const [from, to] = splitRange(sprint.dates);
+  const start = asDate(from); const end = asDate(to);
+  if (!start || !end) return null;
+  const total = dayCount(start, end) + 1;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const day = Math.min(Math.max(dayCount(start, now) + 1, 1), total);
+  return { day, total, start, end };
+}
+
+const pointsOf = (items) => items.reduce((n, i) => n + num(i.points ?? i.estimate), 0);
+
+/** What a Ready story is still missing before it meets the Definition of Ready. */
+function dorGaps(story) {
+  const missing = [];
+  if (!isSet(story.story)) missing.push('story sentence');
+  else if (!/\bas a\b[\s\S]*\bi want\b/i.test(story.story)) missing.push('As a / I want / so that');
+  if (!story.criteria.length && !story.criteria_met) missing.push('acceptance criteria');
+  if (!isSet(story.estimate)) missing.push('estimate');
+  if (!isSet(story.priority)) missing.push('priority');
+  return missing;
+}
+
+function needsYou() {
+  const repo = state.repo;
+  if (!repo) return [];
+  const out = [];
+  const stories = Object.fromEntries(repo.stories.map((s) => [s.id, s]));
+
+  // 1. Blocked items, and what they are waiting on when the reason names an id.
+  for (const b of repo.sprint.blocked) {
+    const waits = (String(b.reason || '').match(/\b(?:US|BUG|EPIC)-\d+\b/i) || [])[0];
+    out.push({ kind: 'blocked', tone: 'crit', id: b.id,
+      title: `${b.id} is blocked`,
+      detail: isSet(b.reason) ? b.reason : 'no reason recorded',
+      waits: waits ? waits.toUpperCase() : null });
+  }
+
+  // 2. Anything still in an inbox.
+  const waiting = repo.ideas.length + repo.bug_inbox.length;
+  if (waiting) {
+    out.push({ kind: 'triage', tone: 'accent',
+      title: `${waiting} waiting to be triaged`,
+      detail: `${repo.ideas.length} idea(s) · ${repo.bug_inbox.length} bug report(s)` });
+  }
+
+  // 3. Ready stories that do not actually meet the Definition of Ready.
+  for (const s of repo.stories) {
+    if (s.state !== 'Ready') continue;
+    const missing = dorGaps(s);
+    if (missing.length) {
+      out.push({ kind: 'dor', tone: 'warn', id: s.id, missing,
+        title: `${s.id} is Ready but incomplete`,
+        detail: `missing ${missing.join(', ')}` });
+    }
+  }
+
+  // 4. Work started before the thing it depends on was delivered.
+  for (const s of repo.stories) {
+    if (s.state !== 'In Sprint') continue;
+    const unmet = (s.dependencies || []).filter(
+      (d) => stories[d] && stories[d].state !== 'Delivered');
+    if (unmet.length) {
+      out.push({ kind: 'early', tone: 'warn', id: s.id, waits: unmet[0],
+        title: `${s.id} started before its dependency`,
+        detail: `needs ${unmet.join(', ')}, still ${unmet.map((d) => stories[d].state).join(', ')}` });
+    }
+  }
+
+  // 5. Delivered work nobody has released.
+  if (repo.releases.increment.length) {
+    out.push({ kind: 'release', tone: 'accent',
+      title: `${repo.releases.increment.length} delivered item(s) aren't in a release`,
+      detail: repo.releases.increment.map((i) => i.id).filter(Boolean).join(', ')
+              || 'the Increment is waiting for a version' });
+  }
+
+  // 6. Drift the ledger check found.
+  if (state.drift && state.drift.length) {
+    out.push({ kind: 'drift', tone: 'warn',
+      title: `${state.drift.length} drift finding(s) in the ledger`,
+      detail: state.drift.slice(0, 2).join(' · ') });
+  }
+
+  // 7. Ledger edits nobody has committed.
+  const git = state.workspace && state.workspace.git;
+  if (git && git.dirty) {
+    out.push({ kind: 'commit', tone: 'accent',
+      title: `${git.changes.length} uncommitted ledger file(s)`,
+      detail: `on ${git.branch}` });
+  }
+  return out;
+}
+
+function healthCount() {
+  return needsYou().filter((f) => ['dor', 'early', 'drift'].includes(f.kind)).length;
+}
+
+/* ====================================================================== Today */
+
+const LENS_KEY = 'today.lens';
+
+function currentLens() {
+  const stored = remember(LENS_KEY);
+  if (stored === 'pm' || stored === 'me') return stored;
+  // Default to the lens that matches who you are viewing as.
+  return state.person ? 'me' : 'pm';
+}
 
 VIEWS.today = () => {
-  const wrap = el('div', {});
+  const repo = state.repo;
+  const sprint = repo.sprint;
   const findings = needsYou();
-  const sprint = state.repo.sprint;
+  const lens = currentLens();
+  const day = sprintDay(sprint);
+
+  const context = [
+    new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }),
+    isSet(sprint.name) ? `sprint ${sprint.name}` : 'no sprint open',
+    day ? `day ${day.day} of ${day.total}` : null,
+    findings.length ? `${findings.length} thing${findings.length > 1 ? 's' : ''} need you`
+                    : 'nothing needs you',
+  ].filter(Boolean).join(' · ');
+
+  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Lens' },
+    el('button', { type: 'button', 'aria-pressed': String(lens === 'pm'),
+      onclick: () => { remember(LENS_KEY, 'pm'); render(); } }, 'Needs you'),
+    el('button', { type: 'button', 'aria-pressed': String(lens === 'me'),
+      onclick: () => { remember(LENS_KEY, 'me'); render(); } }, 'My work'));
+
+  const wrap = el('div', {});
   wrap.append(el('div', { class: 'page-head' },
     el('div', { class: 'grow' },
       el('h1', { class: 'page-title', text: greeting() }),
-      el('p', { class: 'page-sub', text: [
-        today(),
-        isSet(sprint.name) ? `sprint ${sprint.name}` : 'no sprint open',
-        findings.length ? `${findings.length} thing(s) need you` : 'nothing needs you',
-      ].join(' · ') }))));
-  // Phase 3 turns these into the full Needs-you queue; for now the existing
-  // overview keeps every number reachable.
-  wrap.append(VIEWS.overview());
+      el('p', { class: 'page-sub', text: context })),
+    seg));
+
+  wrap.append(el('div', { class: 'two-col' },
+    lens === 'me' ? myWorkColumn() : needsYouColumn(findings),
+    el('div', {}, sprintPulse(), nextSprintReadiness(), activityFeed())));
   return wrap;
 };
 
@@ -1699,10 +1789,590 @@ function greeting() {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
-function today() {
-  return new Date().toLocaleDateString(undefined,
-    { weekday: 'long', day: 'numeric', month: 'long' });
+
+const NEED_ICON = {
+  blocked: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11ZM4.6 8h6.8',
+  triage: 'M2.5 4.5h11M4.5 8h7M6.5 11.5h3',
+  dor: 'M8 2.5 14 13H2ZM8 6.5v3M8 11h.01',
+  early: 'M8 2.5 14 13H2ZM8 6.5v3M8 11h.01',
+  release: 'M2.5 11.5h11M4 11.5V6.5l4-4 4 4v5',
+  drift: 'M2.5 8h3l2-4 2 8 2-4h2',
+  commit: 'M8 5.25a2.75 2.75 0 1 1 0 5.5 2.75 2.75 0 0 1 0-5.5ZM8 2v3.25M8 10.75V14',
+};
+
+function needIcon(kind, tone) {
+  return el('span', { class: `ico tone-${tone}` },
+    svg('svg', { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+      svg('path', { d: NEED_ICON[kind] || NEED_ICON.drift, fill: 'none',
+        stroke: 'currentColor', 'stroke-width': 1.5,
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round' })));
 }
+
+function needsYouColumn(findings) {
+  const card = el('div', { class: 'card needs' });
+  if (!findings.length) {
+    card.append(el('div', { class: 'need-empty' },
+      el('h3', { text: 'Nothing needs you' }),
+      el('p', { text: 'No blocked work, nothing waiting to be triaged, and the backlog agrees with itself.' })));
+    return card;
+  }
+  for (const f of findings) card.append(needRow(f));
+  return card;
+}
+
+function needRow(f) {
+  const row = el('div', { class: 'need' });
+  row.append(needIcon(f.kind, f.tone));
+
+  const body = el('div', {});
+  body.append(el('h3', {}, rich(f.title)));
+  body.append(el('p', {}, rich(f.detail)));
+
+  // Rule 1 names what a blocked item is waiting on, when the reason says so.
+  if (f.kind === 'blocked' && f.waits) {
+    const dep = state.repo.stories.find((s) => s.id === f.waits);
+    body.append(el('p', { class: 'hint' },
+      document.createTextNode('waits on '),
+      el('button', { class: 'idlink', type: 'button',
+        onclick: () => openItemPage(f.waits) }, f.waits),
+      document.createTextNode(dep ? ` · ${dep.state}` : '')));
+  }
+  if (f.kind === 'triage') body.append(triageStrip());
+  row.append(body);
+  row.append(el('div', { class: 'need-act' }, ...needActions(f)));
+  return row;
+}
+
+function needActions(f) {
+  switch (f.kind) {
+    case 'blocked':
+      return [
+        el('button', { class: 'btn small primary', type: 'button',
+          onclick: () => goTo('sprint') }, 'Board'),
+        el('button', { class: 'btn small', type: 'button',
+          onclick: () => act('set_blocked', { item_id: f.id, blocked: false }, 'Unblocked') },
+          'Unblock'),
+      ];
+    case 'triage':
+      return [el('button', { class: 'btn small primary', type: 'button',
+        onclick: () => goTo('inbox') }, 'Triage…')];
+    case 'dor': {
+      const story = state.repo.stories.find((s) => s.id === f.id);
+      return [el('button', { class: 'btn small primary', type: 'button',
+        onclick: () => editStoryForm(story) }, 'Fix')];
+    }
+    case 'early':
+      return [el('button', { class: 'btn small', type: 'button',
+        onclick: () => openItemPage(f.id) }, 'Open')];
+    case 'release':
+      return [el('button', { class: 'btn small primary', type: 'button',
+        onclick: cutReleaseForm }, 'Cut release…')];
+    case 'drift':
+      return [el('button', { class: 'btn small', type: 'button',
+        onclick: () => goTo('health') }, 'Review')];
+    case 'commit':
+      return [el('button', { class: 'btn small primary', type: 'button',
+        onclick: commitForm }, 'Commit…')];
+    default:
+      return [];
+  }
+}
+
+/** Triage inline, so the commonest chore does not need another screen. */
+function triageStrip() {
+  const repo = state.repo;
+  const strip = el('div', { class: 'triage-strip' });
+  for (const idea of repo.ideas.slice(0, 3)) {
+    strip.append(el('div', { class: 'triage-row' },
+      prose(idea.text, 'span', { class: 'grow' }),
+      el('button', { class: 'btn small', type: 'button',
+        onclick: () => triageToEpicForm(idea) }, '→ Epic'),
+      el('button', { class: 'btn small', type: 'button',
+        onclick: () => triageToStoryForm(idea) }, '→ Story'),
+      el('button', { class: 'btn small ghost', type: 'button',
+        onclick: () => discardIdea(idea) }, 'Discard')));
+  }
+  for (const bug of repo.bug_inbox.slice(0, 2)) {
+    strip.append(el('div', { class: 'triage-row' },
+      prose(bug.text, 'span', { class: 'grow' }),
+      el('button', { class: 'btn small', type: 'button',
+        onclick: () => triageBugForm(bug) }, 'Triage bug')));
+  }
+  const more = repo.ideas.length + repo.bug_inbox.length - strip.children.length;
+  if (more > 0) {
+    strip.append(el('p', { class: 'hint', text: `and ${more} more in the Inbox` }));
+  }
+  return strip;
+}
+
+/* ------------------------------------------------------------ sprint pulse */
+
+function sprintPulse() {
+  const repo = state.repo;
+  const sprint = repo.sprint;
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Sprint pulse' }));
+  if (!isSet(sprint.name)) {
+    card.append(el('p', { class: 'hint', text: 'No sprint open.' }));
+    card.append(el('button', { class: 'btn small primary', style: 'margin-top:10px',
+      type: 'button', onclick: planSprintForm }, 'Plan sprint'));
+    return card;
+  }
+
+  card.append(prose(sprint.goal, 'p', { style: 'margin:0 0 12px' }));
+
+  const columns = state.workspace.vocabulary.board_columns;
+  const done = sprint.board.Done || [];
+  const all = columns.flatMap((c) => sprint.board[c] || []);
+  const committed = pointsOf(all);
+  const donePts = pointsOf(done);
+  const capacity = num(sprint.capacity);
+
+  card.append(burndown(sprint, committed, donePts));
+
+  const rows = el('div', { class: 'pulse-cols' });
+  for (const c of columns) {
+    const items = sprint.board[c] || [];
+    rows.append(el('div', { class: 'pulse-col' },
+      glyph('story', 'In Sprint', c),
+      el('span', { class: 'grow', text: c }),
+      el('span', { class: 'mono', text: `${items.length} · ${pointsOf(items)}p` })));
+  }
+  card.append(rows);
+  card.append(el('p', { class: 'hint', style: 'margin-top:10px',
+    text: capacity
+      ? `${committed} pts committed of ${capacity} capacity · ${donePts} done`
+      : `${committed} pts committed · ${donePts} done` }));
+  return card;
+}
+
+/**
+ * Burndown. The snapshot holds no per-day history, but a delivered story
+ * records the date it was delivered and the sprint it belongs to — so the
+ * actual line is real for anything completed, and only the future is missing.
+ */
+function burndown(sprint, committed, donePts) {
+  const day = sprintDay(sprint);
+  const box = el('div', { class: 'burn' });
+  if (!day || !committed) {
+    box.append(el('p', { class: 'hint',
+      text: day ? 'Nothing committed yet.' : 'No sprint dates, so no burndown.' }));
+    return box;
+  }
+
+  const idealLeft = Math.max(0, Math.round(committed * (1 - (day.day - 1) / Math.max(1, day.total - 1))));
+  const left = committed - donePts;
+  const diff = idealLeft - left;
+
+  // Real completions, by the date on each delivered line.
+  const byDay = new Map();
+  for (const item of sprint.board.Done || []) {
+    const story = state.repo.stories.find((s) => s.id === item.id);
+    const bug = state.repo.bugs.find((b) => b.id === item.id);
+    const line = (story && story.delivered) || (bug && bug.fixed) || '';
+    const when = (String(line).match(/\d{4}-\d{2}-\d{2}/) || [])[0];
+    if (!when) continue;
+    byDay.set(when, (byDay.get(when) || 0) + num(item.points));
+  }
+
+  const W = 260, H = 64, pad = 2;
+  const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'burn-svg', role: 'img',
+    'aria-label': `${left} points left of ${committed}, day ${day.day} of ${day.total}` });
+  const x = (d) => pad + ((d - 1) / Math.max(1, day.total - 1)) * (W - pad * 2);
+  const y = (v) => pad + (1 - v / committed) * (H - pad * 2);
+
+  chart.append(svg('line', { x1: x(1), y1: y(committed), x2: x(day.total), y2: y(0),
+    class: 'burn-ideal' }));
+
+  if (byDay.size) {
+    let left_ = committed;
+    const points = [[1, committed]];
+    for (let d = 1; d <= day.day; d++) {
+      const date = new Date(day.start.getTime() + (d - 1) * 86400000)
+        .toISOString().slice(0, 10);
+      if (byDay.has(date)) left_ -= byDay.get(date);
+      points.push([d, left_]);
+    }
+    chart.append(svg('polyline', { class: 'burn-actual', fill: 'none',
+      points: points.map(([d, v]) => `${x(d)},${y(v)}`).join(' ') }));
+    const last = points[points.length - 1];
+    chart.append(svg('circle', { cx: x(last[0]), cy: y(last[1]), r: 3.2, class: 'burn-dot' }));
+  } else {
+    chart.append(svg('circle', { cx: x(day.day), cy: y(left), r: 3.2, class: 'burn-dot' }));
+  }
+  box.append(chart);
+
+  const sentence = diff > 0 ? `${diff} pts ahead of the ideal line`
+    : diff < 0 ? `${-diff} pts behind the ideal line`
+    : 'exactly on the ideal line';
+  box.append(el('p', { class: 'burn-note', text: `${left} of ${committed} pts left · ${sentence}` }));
+  if (!byDay.size && donePts) {
+    box.append(el('p', { class: 'hint',
+      text: 'Showing today only — delivered items carry no date yet.' }));
+  }
+  return box;
+}
+
+function nextSprintReadiness() {
+  const repo = state.repo;
+  const ready = repo.stories.filter((s) => s.state === 'Ready');
+  const readyPts = pointsOf(ready);
+  const velocity = num(repo.history.rolling_velocity);
+  const drafts = repo.epics.reduce(
+    (n, e) => n + (e.stories || []).filter((i) => /Draft/.test(i.state || '')).length, 0);
+
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Next sprint readiness' }));
+  card.append(el('p', { class: 'readiness' },
+    el('span', { class: 'readiness-big mono', text: String(readyPts) }),
+    el('span', { class: 'hint', text: velocity ? `Ready pts · velocity ${velocity}` : 'Ready pts' })));
+  if (velocity) card.append(meter(Math.min(readyPts, velocity), velocity));
+  card.append(el('p', { class: 'hint', style: 'margin-top:8px',
+    text: velocity
+      ? (readyPts >= velocity
+          ? `Enough Ready work for a sprint at ${velocity} pts.`
+          : `${velocity - readyPts} pts short of the rolling velocity.`)
+      : 'No velocity yet — close a sprint to get one.' }));
+  if (drafts) {
+    card.append(el('p', { class: 'hint',
+      text: `${drafts} Draft${drafts > 1 ? 's' : ''} still to write up.` }));
+  }
+  return card;
+}
+
+function activityFeed() {
+  const repo = state.repo;
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Activity' }));
+  const log = repo.sprint.sync_log || [];
+  const rows = el('div', {});
+
+  if (state.lastExternal) {
+    rows.append(el('div', { class: 'feed' },
+      el('span', { class: 'mono hint', text: 'just now' }),
+      el('span', { text: 'the ledger changed outside the dashboard' })));
+  }
+  for (const line of log.slice(0, 6)) {
+    const when = (String(line).match(/\d{4}-\d{2}-\d{2}/) || [])[0] || '';
+    rows.append(el('div', { class: 'feed' },
+      el('span', { class: 'mono hint', text: when }),
+      el('span', {}, rich(String(line).replace(when, '').replace(/^\s*[—·-]\s*/, '')))));
+  }
+  if (!rows.children.length) {
+    const last = repo.sprint.last_sync;
+    card.append(el('p', { class: 'hint',
+      text: isSet(last) ? `Last main sync: ${last}` : 'No sync recorded yet. /sync-main writes here.' }));
+    return card;
+  }
+  card.append(rows);
+  return card;
+}
+
+/* ================================================================== My work */
+
+function myWorkColumn() {
+  const repo = state.repo;
+  const who = state.person;
+  const col = el('div', {});
+  if (!who) {
+    col.append(el('div', { class: 'card needs' },
+      el('div', { class: 'need-empty' },
+        el('h3', { text: 'Pick who you are' }),
+        el('p', { text: 'Choose a name under “Viewing as” in the rail and this becomes your work.' }))));
+    return col;
+  }
+
+  const mine = (item) => nameOf(item.assignee).toLowerCase() === who.toLowerCase();
+  const board = repo.sprint.board;
+  const inColumn = (c) => (board[c] || []).filter((i) => {
+    const full = repo.stories.find((s) => s.id === i.id) || repo.bugs.find((b) => b.id === i.id);
+    return full ? mine(full) : mine(i);
+  });
+
+  const now = inColumn('In Progress')[0];
+  col.append(now ? nowCard(now) : el('div', { class: 'card needs' },
+    el('div', { class: 'need-empty' },
+      el('h3', { text: 'Nothing in progress' }),
+      el('p', { text: 'Start something from Up next, or pick work off the board.' }))));
+
+  const listCard = (title, items, empty) => {
+    const card = el('div', { class: 'side-card', style: 'margin-top:14px' },
+      el('h3', { text: title }));
+    if (!items.length) { card.append(el('p', { class: 'hint', text: empty })); return card; }
+    for (const i of items) {
+      const full = repo.stories.find((s) => s.id === i.id) || repo.bugs.find((b) => b.id === i.id);
+      const blocked = repo.sprint.blocked.find((b) => b.id === i.id);
+      card.append(el('div', { class: 'mine-row' },
+        el('button', { class: 'idlink', type: 'button',
+          onclick: () => openItemPage(i.id) }, i.id),
+        el('span', { class: 'grow', text: show(i.title) }),
+        isSet(i.points) ? badge(`${i.points} pts`) : null,
+        blocked ? blockedMark(blocked.reason) : null));
+    }
+    return card;
+  };
+
+  col.append(listCard('With review',
+    [...inColumn('In Review'), ...inColumn('In PR')], 'Nothing waiting on a review.'));
+  col.append(listCard('Up next', inColumn('To Do'), 'Nothing queued for you.'));
+
+  const past = repo.history.sprints[0];
+  if (past) {
+    const delivered = past.delivered.filter((id) => {
+      const s = repo.stories.find((x) => x.id === id) || repo.bugs.find((x) => x.id === id);
+      return s && mine(s);
+    });
+    col.append(el('div', { class: 'side-card', style: 'margin-top:14px' },
+      el('h3', { text: 'Your last sprint' }),
+      el('p', { class: 'hint',
+        text: `${past.name} · ${delivered.length} of ${past.delivered.length} delivered items were yours` }),
+      delivered.length
+        ? el('div', { class: 'chips', style: 'margin-top:8px' }, delivered.map((id) =>
+            el('button', { class: 'idlink', type: 'button',
+              onclick: () => openItemPage(id) }, id)))
+        : null));
+  }
+  return col;
+}
+
+function nowCard(item) {
+  const repo = state.repo;
+  const story = repo.stories.find((s) => s.id === item.id);
+  const bug = repo.bugs.find((b) => b.id === item.id);
+  const full = story || bug;
+  const entity = story ? 'story' : 'bug';
+  const column = boardColumn(item.id);
+  const card = el('div', { class: 'card now-card' });
+
+  card.append(el('div', { class: 'now-head' },
+    stateChip(entity, full ? full.state : 'In Sprint', { column }),
+    isSet(item.points) ? badge(`${item.points} pts`) : null,
+    full && isSet(full.parent) ? badge(full.parent) : null,
+    full && isSet(full.layer) ? badge(full.layer) : null));
+  card.append(el('h2', { class: 'now-title' },
+    el('button', { class: 'idlink', type: 'button',
+      onclick: () => openItemPage(item.id) }, item.id),
+    document.createTextNode(' '), document.createTextNode(show(item.title))));
+
+  if (story && isSet(story.story)) card.append(storySentence(story.story));
+  if (bug && isSet(bug.symptom)) card.append(prose(bug.symptom, 'p', { class: 'lede' }));
+
+  const branch = branchFor(full || item, true);
+  card.append(el('div', { class: 'chips', style: 'margin:12px 0' },
+    el('code', { text: branch }),
+    el('button', { class: 'btn small ghost', type: 'button',
+      onclick: () => branchFor(full || item) }, 'Copy branch')));
+
+  if (story && (story.dependencies || []).length) {
+    const row = el('div', { class: 'chips', style: 'margin-bottom:12px' },
+      el('span', { class: 'hint', text: 'Needs' }));
+    for (const d of story.dependencies) {
+      const dep = repo.stories.find((s) => s.id === d);
+      const met = dep && dep.state === 'Delivered';
+      row.append(el('span', { class: `dep ${met ? 'dep-met' : ''}` },
+        el('button', { class: 'idlink', type: 'button',
+          onclick: () => openItemPage(d) }, d),
+        document.createTextNode(met ? ' ✓' : dep ? ` · ${dep.state}` : '')));
+    }
+    card.append(row);
+  }
+
+  if (story) card.append(criteriaChecklist(story));
+  card.append(dodBlock());
+
+  const columns = state.workspace.vocabulary.board_columns;
+  const at = columns.indexOf(column);
+  const next = at >= 0 && at < columns.length - 1 ? columns[at + 1] : null;
+  const row = el('div', { class: 'chips', style: 'margin-top:14px' });
+  if (next) {
+    row.append(el('button', { class: 'btn primary', type: 'button',
+      onclick: () => moveItem(item.id, next) }, `Move to ${next}`));
+  }
+  for (const c of columns) {
+    if (c === column || c === next) continue;
+    row.append(el('button', { class: 'btn small', type: 'button',
+      onclick: () => moveItem(item.id, c) }, c));
+  }
+  card.append(row);
+  return card;
+}
+
+/** As a / I want / so that, with the three parts readable at a glance. */
+function storySentence(text) {
+  const node = el('p', { class: 'lede' });
+  const parts = String(text).split(/\b(As an?|I want|so that)\b/i);
+  for (const part of parts) {
+    if (/^(as an?|i want|so that)$/i.test(part)) {
+      node.append(el('em', { class: 'story-key', text: part }));
+    } else if (part) {
+      node.append(rich(part));
+    }
+  }
+  return node;
+}
+
+function criteriaChecklist(story) {
+  const box = el('div', { class: 'detail-block', style: 'margin-top:14px' });
+  const total = story.criteria.length;
+  const met = story.criteria_met ? total : 0;
+  box.append(el('h4', { text: total ? `Acceptance criteria · ${met} / ${total} met`
+                                    : 'Acceptance criteria' }));
+  if (story.criteria_met) {
+    box.append(el('p', { text: 'All met ✓' }));
+    return box;
+  }
+  if (!total) {
+    box.append(el('p', { class: 'hint', text: 'None written yet — this is a Definition of Ready gap.' }));
+    return box;
+  }
+  box.append(el('ul', { class: 'check-list' }, story.criteria.map((c) => {
+    const li = el('li', {}, checkBox(false));
+    const body = el('span', {});
+    for (const part of String(c).split(/\b(given|when|then)\b/i)) {
+      if (/^(given|when|then)$/i.test(part)) {
+        body.append(el('span', { class: 'gwt', text: part.toUpperCase() }), ' ');
+      } else if (part.trim()) body.append(rich(part));
+    }
+    li.append(body);
+    return li;
+  })));
+  return box;
+}
+
+function dodBlock() {
+  const list = (state.repo.definitions && state.repo.definitions.definition_of_done) || [];
+  const box = el('div', { class: 'detail-block' });
+  box.append(el('h4', { text: 'Before Done' }));
+  if (!list.length) {
+    box.append(el('p', { class: 'hint', text: 'No Definition of Done in Definitions.md.' }));
+    return box;
+  }
+  box.append(el('ul', { class: 'check-list' },
+    list.map((line) => el('li', {}, checkBox(false), el('span', {}, rich(line))))));
+  return box;
+}
+
+/* =================================================================== Health */
+
+VIEWS.health = () => {
+  const repo = state.repo;
+  const findings = needsYou();
+  const dor = findings.filter((f) => f.kind === 'dor');
+  const early = findings.filter((f) => f.kind === 'early');
+  const drift = state.drift || [];
+  const warned = sessionWarnings();
+  const git = state.workspace && state.workspace.git;
+
+  const wrap = el('div', {});
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: 'Health' }),
+      el('p', { class: 'page-sub', text: 'what the ledger says is wrong with itself' })),
+    el('button', { class: 'btn primary', type: 'button', onclick: runCheck }, 'Run ledger check')));
+
+  wrap.append(el('div', { class: 'kpis' },
+    kpi('Fails Definition of Ready', dor.length, dor.length ? 'Ready in name only' : 'all clear'),
+    kpi('Ledger drift', state.drift === null ? '—' : drift.length,
+      state.drift === null ? 'not checked yet' : 'from /ledger-check'),
+    kpi('Saved with a warning', warned.length, 'this session'),
+    kpi('Uncommitted', git && git.dirty ? git.changes.length : 0, 'not a problem, just pending')));
+
+  const group = (title, count, rows, empty) => {
+    const card = el('div', { class: 'card' });
+    card.append(el('div', { class: 'gh' },
+      el('h2', { text: title }),
+      el('span', { class: 'c mono', text: String(count) })));
+    if (!rows.length) {
+      card.append(el('p', { class: 'hint', style: 'padding:0 18px 16px', text: empty }));
+      return card;
+    }
+    for (const r of rows) card.append(r);
+    return card;
+  };
+
+  wrap.append(el('div', { class: 'two-col' }, el('div', {},
+    group('Fails Definition of Ready', dor.length,
+      dor.map((f) => findingRow(f, 'User-Stories.md')),
+      'Every Ready story has a sentence, criteria, an estimate and a priority.'),
+    el('div', { style: 'height:16px' }),
+    group('Started before a dependency', early.length,
+      early.map((f) => findingRow(f, 'User-Stories.md')),
+      'Nothing in the sprint started ahead of what it needs.'),
+    el('div', { style: 'height:16px' }),
+    group('Ledger drift', drift.length,
+      drift.map((d) => el('div', { class: 'f' },
+        el('div', {}, el('h3', { text: d })),
+        el('div', {}))),
+      state.drift === null ? 'Run the ledger check to look for drift.' : 'No drift found.'),
+    el('div', { style: 'height:16px' }),
+    group('Saved with a warning', warned.length,
+      warned.map((w) => el('div', { class: 'f' },
+        el('div', {},
+          el('h3', { text: w.message }),
+          el('p', { class: 'hint', text: w.when })),
+        el('div', {}, el('button', { class: 'btn small ghost', type: 'button',
+          onclick: () => { acknowledge(w.key); render(); } }, 'Acknowledge')))),
+      'Nothing was saved with a warning in this session.'),
+  ), healthSide(dor, git)));
+  return wrap;
+};
+
+function findingRow(f, file) {
+  const item = state.repo.stories.find((s) => s.id === f.id);
+  const body = el('div', {},
+    el('h3', { text: f.title }),
+    el('p', { text: f.detail }));
+  if (item && item.span) {
+    body.append(el('button', { class: 'src', type: 'button',
+      onclick: () => { location.hash = `#/files/${encodeURIComponent(file)}`; } },
+      `${file} : ${item.span[0] + 1}–${item.span[1]}`));
+  }
+  const actions = el('div', { class: 'chips' },
+    el('button', { class: 'btn small', type: 'button',
+      onclick: () => openItemPage(f.id) }, 'Open'));
+  if (f.kind === 'dor' && item) {
+    actions.append(el('button', { class: 'btn small primary', type: 'button',
+      onclick: () => editStoryForm(item) }, 'Fix'));
+  }
+  return el('div', { class: 'f' }, body, actions);
+}
+
+function healthSide(dor, git) {
+  const side = el('div', {});
+  const list = (state.repo.definitions && state.repo.definitions.definition_of_ready) || [];
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Definition of Ready' }));
+  if (!list.length) {
+    card.append(el('p', { class: 'hint', text: 'No Definition of Ready in Definitions.md.' }));
+  } else {
+    // Which of the team's own checks the failing stories are failing.
+    const failed = new Set(dor.flatMap((f) => f.missing || []));
+    for (const line of list) {
+      const hit = [...failed].find((m) => line.toLowerCase().includes(m.split(' ')[0]));
+      card.append(el('div', { class: 'chk' },
+        el('span', { class: `mk ${hit ? 'mk-bad' : 'mk-ok'}` }, hit ? '!' : '✓'),
+        el('span', {}, rich(line))));
+    }
+  }
+  side.append(card);
+
+  if (git && git.dirty) {
+    side.append(el('div', { class: 'side-card', style: 'margin-top:14px' },
+      el('h3', { text: 'Uncommitted' }),
+      el('pre', { class: 'source', style: 'max-height:160px', text: git.changes.join('\n') }),
+      el('button', { class: 'btn small primary', style: 'margin-top:10px',
+        type: 'button', onclick: commitForm }, 'Commit…')));
+  }
+  return side;
+}
+
+/* Warnings are re-derivable wherever possible (DoR gaps and unmet dependencies
+ * have their own groups above, straight from the snapshot). What is left is a
+ * record of what this session saved anyway; only the acknowledgement is stored,
+ * per viewer, never in the ledger. */
+function sessionWarnings() {
+  return (state.warnings || []).filter((w) => !isAcknowledged(w.key));
+}
+
+function ackKey(key) { return `ack.${state.slug}.${key}`; }
+function isAcknowledged(key) { return remember(ackKey(key)) === '1'; }
+function acknowledge(key) { remember(ackKey(key), '1'); }
 
 /** Backlog gathers what used to be three tabs; Phase 4 makes it one outline. */
 VIEWS.backlog = () => {
@@ -1735,44 +2405,6 @@ VIEWS.ship = () => {
         text: `${state.repo.releases.increment.length} waiting · rolling velocity ${show(state.repo.history.rolling_velocity)}` }))));
   wrap.append(VIEWS.releases());
   wrap.append(VIEWS.sprints());
-  return wrap;
-};
-
-VIEWS.health = () => {
-  const wrap = el('div', {});
-  const findings = needsYou().filter((f) => f.kind === 'dor' || f.kind === 'early');
-  wrap.append(el('div', { class: 'page-head' },
-    el('div', { class: 'grow' },
-      el('h1', { class: 'page-title', text: 'Health' }),
-      el('p', { class: 'page-sub', text: 'what the ledger says is wrong with itself' })),
-    el('button', { class: 'btn', type: 'button', onclick: runCheck }, 'Run ledger check')));
-
-  const section = (title, rows, empty) => el('section', { class: 'section' },
-    sectionHead(title, `${rows.length}`),
-    rows.length
-      ? el('div', { class: 'stack' }, rows.map((f) => el('div', { class: 'item' },
-          el('div', { class: 'grow' },
-            el('strong', { text: f.title || f }),
-            f.detail ? el('div', { class: 'hint', text: f.detail }) : null),
-          f.id ? el('button', { class: 'btn small', type: 'button',
-            onclick: () => openItemPage(f.id) }, 'Open') : null)))
-      : el('p', { class: 'empty', text: empty }));
-
-  wrap.append(section('Fails Definition of Ready',
-    findings.filter((f) => f.kind === 'dor'), 'Every Ready story has what it needs.'));
-  wrap.append(section('Started before a dependency',
-    findings.filter((f) => f.kind === 'early'), 'Nothing started early.'));
-  wrap.append(section('Ledger drift',
-    (state.drift || []).map((d) => ({ title: d })),
-    state.drift ? 'No drift found.' : 'Run the ledger check to look for drift.'));
-
-  const git = state.workspace && state.workspace.git;
-  if (git && git.dirty) {
-    wrap.append(el('section', { class: 'section' },
-      sectionHead('Uncommitted', `${git.changes.length}`,
-        el('button', { class: 'btn small', type: 'button', onclick: commitForm }, 'Commit…')),
-      el('pre', { class: 'source', text: git.changes.join('\n') })));
-  }
   return wrap;
 };
 
@@ -2360,6 +2992,7 @@ async function poll() {
       state.repo = await api(`/api/repo/${encodeURIComponent(state.slug)}`);
       state.revision = state.repo.revision;
       state.externalEdit = !ours;
+      if (!ours) state.lastExternal = Date.now();
       render();
     } else {
       renderTrust();

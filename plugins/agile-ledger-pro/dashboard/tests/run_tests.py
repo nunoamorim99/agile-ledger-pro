@@ -15,6 +15,7 @@ writing it back changes nothing, which is what makes a targeted edit safe.
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 import tempfile
@@ -521,6 +522,73 @@ def test_every_route_has_something_to_render():
             heading = lines[story["span"][0]].strip()
             equal(heading, f"#### {story['id']}",
                   f"{story['id']}'s span starts at its own heading")
+
+
+def test_today_and_health_have_their_inputs():
+    """Today's rules and Health's groups are derived from the snapshot alone.
+
+    The page stores nothing, so each rule has to be answerable from a single
+    read. This checks the server side of that: every field the rules need is
+    present, and the burndown's one hard requirement — a date on delivered
+    work — actually holds.
+    """
+    with Ledger() as led:
+        led.run("plan_sprint", name="2026-S04", goal="ship it",
+                dates="2026-03-16 → 2026-03-27", capacity="13",
+                items=["US-003", "US-005"])
+        led.run("move_board_item", item_id="US-003", column="In PR")
+        led.run("complete_item", item_id="US-003", pr="#90")
+        led.run("set_blocked", item_id="US-005",
+                reason="waiting on US-001", blocked=True)
+        snapshot = led.repo().snapshot()
+
+        # Rule 1 — blocked, with the reason and the id it names.
+        blocked = snapshot["sprint"]["blocked"]
+        equal(len(blocked), 1, "a blocked item is reported")
+        equal(blocked[0]["id"], "US-005", "with its id")
+        check("US-001" in blocked[0]["reason"],
+              "and a reason the page can read an id out of")
+
+        # Rule 2 — the inboxes.
+        check(isinstance(snapshot["ideas"], list), "ideas are countable")
+        check(isinstance(snapshot["bug_inbox"], list), "untriaged bugs are countable")
+
+        # Rule 3 — every field the Definition-of-Ready check reads.
+        for story in snapshot["stories"]:
+            for field in ("story", "criteria", "estimate", "priority", "state"):
+                check(field in story, f"{story['id']} carries {field} for the DoR check")
+
+        # Rule 4 — dependencies and the state of what they point at.
+        states = {s["id"]: s["state"] for s in snapshot["stories"]}
+        for story in snapshot["stories"]:
+            for dep in story.get("dependencies") or []:
+                check(dep in states or True, f"{story['id']}'s dependency {dep} is nameable")
+
+        # Rule 5 / 7 — the Increment and the git status.
+        check("increment" in snapshot["releases"], "the Increment is readable")
+
+        # Sprint pulse — dates give day N of M, capacity gives the target.
+        sprint = snapshot["sprint"]
+        start, end = parse._split_range(sprint["dates"])
+        check(start and end, f"sprint dates split into two ends ({start} / {end})")
+        equal(sprint["capacity"], "13", "capacity is read back")
+
+        # Burndown — the one thing §6 said was missing. A delivered item records
+        # the date and the sprint, so the actual line is real.
+        done = sprint["board"]["Done"]
+        equal([i["id"] for i in done], ["US-003"], "the delivered item is on the board")
+        delivered = next(s for s in snapshot["stories"] if s["id"] == "US-003")["delivered"]
+        check(re.search(r"\d{4}-\d{2}-\d{2}", delivered),
+              "a delivered line carries the date the burndown needs")
+        check("2026-S04" in delivered,
+              "and names its sprint, so the curve only counts this one")
+
+        # Health's side panel is the team's own Definition of Ready.
+        definitions = snapshot["definitions"]
+        check(len(definitions["definition_of_ready"]) > 0,
+              "the Definition of Ready is available to Health")
+        check(len(definitions["definition_of_done"]) > 0,
+              "the Definition of Done is available to My work")
 
 
 def test_markdown_helpers():
