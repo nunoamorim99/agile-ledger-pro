@@ -833,3 +833,121 @@ table.grid.sprints td .hint { margin-top: 2px; }
   .selbar.on { position: fixed; left: 12px; right: 12px; bottom: 78px; top: auto; }
   .head-meters { min-width: 0; width: 100%; }
 }
+
+/* =======================================================================
+   Ship — roadmap, increment, velocity, releases.
+   ======================================================================= */
+
+.roadmap { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px; }
+.road-col {
+  flex: 0 0 236px; min-width: 236px;
+  background: var(--sunken); border: 1px solid var(--rule);
+  border-radius: var(--radius-card); padding: 12px;
+}
+.road-col.now { background: var(--accent-soft); border-color: transparent; }
+.road-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.road-v { font-size: 13px; font-weight: 650; }
+.road-head .hint { margin-left: auto; }
+.road-epic {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius-control); padding: 10px; margin-bottom: 8px;
+}
+.road-epic:last-child { margin-bottom: 0; }
+.road-epic-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.road-epic-title { font-size: 13px; line-height: 1.35; margin-bottom: 8px; }
+
+.inc-row {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: var(--row-pad) 0; border-top: 1px solid var(--rule); font-size: 13.5px;
+}
+.inc-row:first-child { border-top: 0; }
+.inc-row .grow { flex: 1 1 auto; min-width: 0; }
+
+.vel .bar { fill: var(--accent); }
+.vel .bar-hit { fill: transparent; cursor: pointer; }
+.vel .bar-hit:hover + .bar, .vel .bar-hit:focus-visible + .bar { filter: brightness(1.12); }
+.vel .gridline { stroke: var(--rule); stroke-width: 1; }
+.vel .axis { stroke: var(--rule2); stroke-width: 1; }
+.vel .tick { fill: var(--ink3); font-size: 10px; font-variant-numeric: tabular-nums; }
+.vel .cat { fill: var(--ink2); font-size: 11px; }
+.vel .direct { fill: var(--ink); font-size: 11px; font-weight: 650; }
+.vel-avg { stroke: var(--ink3); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.vel-avg-label { fill: var(--ink3); font-size: 10.5px; font-family: var(--mono); }
+
+.rel { padding: 16px; }
+.rel-head { display: flex; align-items: baseline; gap: 10px; }
+.rel-v { font-size: 15px; font-weight: 650; color: var(--accent); }
+.rel-title { font-family: var(--serif); font-size: 19px; font-weight: 600; margin: 6px 0 0; }
+.rel-theme { margin: 6px 0 0; color: var(--ink2); }
+
+.retro { display: flex; flex-direction: column; gap: 3px; }
+.retro-row { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; }
+.retro-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink3); font-weight: 650; flex: none;
+}
+
+/* A wide table scrolls inside its own box rather than the page. */
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* =======================================================================
+   Phone — 390 px with no horizontal page scroll.
+   ======================================================================= */
+
+.desktop-only { display: inherit; }
+
+.pager { display: flex; flex-direction: column; gap: 10px; }
+.pager-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.pager-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  min-height: 36px; padding: 0 11px; border-radius: 999px;
+  border: 1px solid var(--rule2); background: var(--surface);
+  color: var(--ink2); font-size: 12.5px; font-weight: 550; cursor: pointer;
+  white-space: nowrap;
+}
+.pager-chip svg { color: var(--accent); }
+.pager-chip[aria-selected="true"] {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+.pager-chip[aria-selected="true"] svg { color: var(--on-accent); }
+.pager .cell { min-height: 120px; }
+
+@media (max-width: 760px) {
+  .desktop-only { display: none !important; }
+
+  /* Nothing may push the page sideways. */
+  html, body { overflow-x: hidden; }
+  .main { padding: 14px 12px 88px; max-width: 100vw; }
+  .page-head { gap: 10px; }
+  .page-title { font-size: 24px; }
+  .two-col, .item-grid, .sprint-stats { grid-template-columns: 1fr; }
+
+  /* Wide things scroll inside themselves instead. */
+  table.grid { display: block; overflow-x: auto; }
+  .roadmap { margin: 0 -12px; padding: 0 12px 4px; }
+  .road-col { flex-basis: 78vw; min-width: 78vw; }
+  .chart svg, .vel { min-width: 0; }
+  pre.source { max-width: 100%; }
+
+  .toolbar { gap: 8px; }
+  .toolbar .seg { flex: 1 1 auto; }
+  .filter { min-height: 38px; }
+
+  /* Touch targets. */
+  .btn { min-height: 38px; }
+  .btn.small { min-height: 34px; }
+  .idlink { min-height: 24px; display: inline-flex; align-items: center; }
+  .cb { width: 20px; height: 20px; }
+  .tk { padding: 11px; }
+  .need { padding: 14px; }
+}
+
+@media (max-width: 420px) {
+  .main { padding: 12px 10px 88px; }
+  .page-title { font-size: 21px; }
+  .road-col { flex-basis: 84vw; min-width: 84vw; }
+  .eh { padding: 11px 12px; }
+  .r { padding: var(--row-pad) 12px; gap: 8px; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tabbar button { font-size: 10px; }
+}

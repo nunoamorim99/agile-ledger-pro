@@ -269,107 +269,6 @@ const linesOf = (text) => String(text || '').split('\n').map((l) => l.trim()).fi
 
 /* ------------------------------------------------------------------ chart */
 
-/* Velocity over time: one series, so no legend box — the caption names it.
- * Bars are capped at 24px with a 4px rounded cap and a 2px surface gap, and
- * only the latest and the best sprint are direct-labelled; the history table
- * below is the table view for every other value. */
-function velocityChart(sprints) {
-  const data = sprints.slice().reverse()
-    .map((s) => ({ sprint: s, name: s.name, value: num(s.velocity) }));
-  if (!data.length) return el('p', { class: 'empty', text: 'No closed sprints yet.' });
-
-  const W = 760, H = 210, padL = 34, padR = 12, padT = 16, padB = 34;
-  const plotW = W - padL - padR, plotH = H - padT - padB;
-  const max = Math.max(...data.map((d) => d.value), 1);
-  const ceiling = Math.max(4, Math.ceil(max / 4) * 4);
-  const band = plotW / data.length;
-  const barW = Math.min(24, Math.max(8, band - 14));
-  const y = (v) => padT + plotH - (v / ceiling) * plotH;
-
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const make = (tag, attrs) => {
-    const node = document.createElementNS(svgNS, tag);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    return node;
-  };
-
-  const svg = make('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
-  const caption = make('title', {});
-  caption.textContent =
-    `Velocity by sprint: ${data.map((d) => `${d.name} ${d.value} points`).join('; ')}`;
-  svg.append(caption);
-
-  for (let i = 0; i <= 4; i++) {
-    const value = (ceiling / 4) * i;
-    const yy = y(value);
-    const line = make('line', { x1: padL, x2: W - padR, y1: yy, y2: yy,
-      class: i === 0 ? 'axis' : 'gridline' });
-    svg.append(line);
-    const tick = make('text', { x: padL - 7, y: yy + 3.5, 'text-anchor': 'end', class: 'tick' });
-    tick.textContent = String(value);
-    svg.append(tick);
-  }
-
-  // Axis labels are the short sprint tag ("2026-S02" -> "S02"); the full name,
-  // dates and goal live in the tooltip. Long names side by side were unreadable.
-  const shortName = (name) => {
-    const text = String(name || '').trim();
-    const tail = text.split(/[-\s/]/).filter(Boolean).pop() || text;
-    return (tail.length <= 6 ? tail : tail.slice(-6)) || text;
-  };
-  // Still too tight? Label every Nth bar rather than overlap them.
-  const widest = Math.max(...data.map((d) => shortName(d.name).length), 1);
-  const every = Math.max(1, Math.ceil((widest * 6.6 + 8) / band));
-
-  const best = Math.max(...data.map((d) => d.value));
-  data.forEach((d, i) => {
-    const x = padL + band * i + (band - barW) / 2;
-    const top = y(d.value);
-    const height = Math.max(0, padT + plotH - top);
-    // 2px surface gap between neighbours comes from the band's leftover air.
-    const bar = make('rect', { x, y: top, width: barW, height,
-      rx: Math.min(4, barW / 2), class: 'bar' });
-    const hit = make('rect', { x: padL + band * i, y: padT, width: band, height: plotH,
-      class: 'bar-hit', tabindex: '0' });
-
-    const s = d.sprint || {};
-    const tip = make('title', {});
-    tip.textContent = [
-      s.name || d.name,
-      isSet(s.title) ? `“${plain(s.title)}”` : '',
-      isSet(s.start) ? `${s.start}${isSet(s.end) ? ' → ' + s.end : ''}` : '',
-      `velocity ${d.value} pts`,
-      isSet(s.committed) ? `committed ${s.committed} pts` : '',
-      isSet(s.goal) ? `Goal: ${plain(s.goal)}` : '',
-    ].filter(Boolean).join('\n');
-    hit.append(tip);
-    // The hit area precedes its bar so the `.bar-hit:hover + .bar` rule lights it up.
-    svg.append(hit, bar);
-
-    // Label the newest bar always, then every Nth going back, so the most
-    // recent sprint is never the one that gets dropped.
-    if ((data.length - 1 - i) % every === 0) {
-      const label = make('text', { x: x + barW / 2, y: padT + plotH + 16,
-        'text-anchor': 'middle', class: 'cat' });
-      label.textContent = shortName(d.name);
-      svg.append(label);
-    }
-
-    if (i === data.length - 1 || (d.value === best && best > 0)) {
-      const value = make('text', { x: x + barW / 2, y: top - 6,
-        'text-anchor': 'middle', class: 'direct' });
-      value.textContent = String(d.value);
-      svg.append(value);
-    }
-  });
-
-  return el('figure', { class: 'chart', style: 'margin:0' },
-    el('figcaption', {
-      text: 'Completed story points per closed sprint, oldest first. '
-          + 'Hover a bar for its full name, dates and goal.' }),
-    svg);
-}
-
 /* ------------------------------------------------------------------ parts */
 
 function badge(text, tone) {
@@ -821,71 +720,9 @@ VIEWS.bugs = () => {
   return wrap;
 };
 
-VIEWS.sprints = () => {
-  const repo = state.repo;
-  const wrap = el('div', {});
-  wrap.append(sectionHead('Sprint history', `rolling velocity ${show(repo.history.rolling_velocity)}`));
-  wrap.append(velocityChart(repo.history.sprints));
-
-  if (repo.history.sprints.length) {
-    wrap.append(el('section', { class: 'section', style: 'margin-top:18px' },
-      el('table', { class: 'grid sprints' },
-        el('thead', {}, el('tr', {},
-          [['Sprint', ''], ['Start', 'date'], ['End', 'date'], ['Goal', 'wide'],
-           ['Committed', 'num'], ['Completed', 'num'], ['Velocity', 'num'],
-           ['Delivered', 'ids'], ['Carried over', 'ids']]
-            .map(([h, cls]) => el('th', { class: cls, text: h })))),
-        el('tbody', {}, repo.history.sprints.map((s) =>
-          el('tr', {},
-            el('td', { class: 'id' },
-              el('strong', { text: show(s.name) }),
-              isSet(s.title) ? el('div', { class: 'hint', text: s.title }) : null),
-            el('td', { class: 'date', text: show(s.start) }),
-            el('td', { class: 'date', text: show(s.end) }),
-            prose(s.goal, 'td', { class: 'wide' }),
-            el('td', { class: 'num', text: show(s.committed) }),
-            el('td', { class: 'num', text: show(s.completed) }),
-            el('td', { class: 'num strong', text: show(s.velocity) }),
-            el('td', { class: 'ids' }, idChips(s.delivered)),
-            el('td', { class: 'ids' }, idChips(s.carried))))))));
-  } else {
-    wrap.append(el('p', { class: 'empty', text: 'No sprints closed yet.' }));
-  }
-  return wrap;
-};
-
-VIEWS.releases = () => {
-  const repo = state.repo;
-  const releases = repo.releases;
-  const wrap = el('div', {});
-  wrap.append(sectionHead('Increment', 'done, not yet released',
-    el('button', { class: 'btn primary', type: 'button', onclick: cutReleaseForm,
-      disabled: releases.increment.length ? null : true }, 'Cut release')));
-
-  wrap.append(releases.increment.length
-    ? el('div', { class: 'stack' }, releases.increment.map((i) =>
-        el('div', { class: 'item' }, prose(i.text, 'div', { class: 'grow' }))))
-    : el('p', { class: 'empty', text: 'Nothing waiting to be released.' }));
-
-  wrap.append(el('section', { class: 'section', style: 'margin-top:22px' },
-    sectionHead('Version history', 'newest first'),
-    releases.versions.length
-      ? el('div', { class: 'stack' }, releases.versions.map((v) =>
-          el('div', { class: 'item' },
-            el('div', { class: 'grow' },
-              el('div', { class: 'chips' },
-                el('strong', { text: v.version }),
-                isSet(v.date) ? badge(v.date) : null),
-              el('h3', { style: 'margin:5px 0 3px; font-size:14px', text: show(v.title) }),
-              isSet(v.theme) ? prose(v.theme, 'p', { style: 'margin:0' }) : null,
-              el('p', { class: 'hint', style: 'margin:6px 0 0',
-                text: `Stories: ${v.stories.join(', ') || EMPTY}  ·  Epics: ${v.epics.join(', ') || EMPTY}` })))))
-      : el('p', { class: 'empty', text: 'No releases cut yet.' })));
-  return wrap;
-};
-
-/* The command sheet. Descriptions come from the shipped commands/*.md
- * frontmatter via /api/commands, so this list cannot drift from the plugin. */
+/* The command sheet links back into the page: a command the dashboard can do
+ * opens its form, one that is already a view jumps there, and the rest are
+ * copied for the session. */
 const HERE_ACTIONS = {
   add_idea: newIdeaForm,
   add_bug: newBugForm,
@@ -897,8 +734,9 @@ const HERE_ACTIONS = {
 };
 
 const ACTION_VIEW = {
-  triage_idea_to_story: 'ideas', triage_bug: 'ideas',
-  detail_story: 'stories', move_board_item: 'board', complete_item: 'board',
+  triage_idea_to_story: 'inbox', triage_bug: 'inbox',
+  detail_story: 'backlog', move_board_item: 'sprint', complete_item: 'sprint',
+  pull_into_sprint: 'backlog', move_story_to_epic: 'backlog',
 };
 
 function copyCommand(text) {
@@ -2366,7 +2204,7 @@ VIEWS.board = () => {
         isSet(sprint.dates) ? el('span', { text: sprint.dates }) : null,
         day ? el('span', { text: `day ${day.day} of ${day.total}` }) : null),
       el('h1', { class: 'page-title' }, rich(show(sprint.goal)))),
-    el('div', { class: 'chips' },
+    el('div', { class: 'chips desktop-only' },
       el('button', { class: 'btn', type: 'button', onclick: closeSprintForm }, 'Close sprint'),
       el('button', { class: 'btn', type: 'button', onclick: planSprintForm }, 'Replan'))));
 
@@ -2402,16 +2240,58 @@ VIEWS.board = () => {
   wrap.append(stats);
 
   const lanes = remember(LANES_KEY) || 'none';
-  wrap.append(el('div', { class: 'toolbar' },
+  wrap.append(el('div', { class: 'toolbar desktop-only' },
     el('span', { class: 'hint', text: 'Lanes' }),
     segControl('Lanes', [['none', 'None'], ['assignee', 'Assignee'], ['epic', 'Epic']],
       lanes, (v) => { remember(LANES_KEY, v); render(); })));
 
-  wrap.append(boardGrid(columns, sprint, lanes, blockedIds, earlyIds));
+  wrap.append(isPhone()
+    ? boardPager(columns, sprint, blockedIds, earlyIds)
+    : boardGrid(columns, sprint, lanes, blockedIds, earlyIds));
   wrap.append(el('p', { class: 'hint', style: 'margin-top:10px',
-    text: 'Drag a card between columns, or focus one and press 1–5.' }));
+    text: isPhone()
+      ? 'Tap a card to open it; use its own buttons to move it.'
+      : 'Drag a card between columns, or focus one and press 1–5.' }));
   return wrap;
 };
+
+/* A phone cannot show five columns at once, so the board becomes a pager: one
+ * column at a time, chips across the top carrying the counts. */
+const PHONE = '(max-width: 760px)';
+function isPhone() {
+  try { return window.matchMedia(PHONE).matches; } catch { return false; }
+}
+
+function boardPager(columns, sprint, blockedIds, earlyIds) {
+  const stored = remember('sprint.column');
+  const current = columns.includes(stored) ? stored : columns[0];
+  const box = el('div', { class: 'pager' });
+
+  const chips = el('div', { class: 'pager-chips', role: 'tablist' });
+  for (const c of columns) {
+    const items = sprint.board[c] || [];
+    chips.append(el('button', { class: 'pager-chip', type: 'button', role: 'tab',
+      'aria-selected': String(c === current),
+      onclick: () => { remember('sprint.column', c); render(); } },
+      glyph('story', 'In Sprint', c),
+      el('span', { text: c }),
+      el('span', { class: 'mono', text: String(items.length) })));
+  }
+  box.append(chips);
+
+  const cell = el('div', { class: 'cell', dataset: { column: current } });
+  const items = sprint.board[current] || [];
+  if (!items.length) {
+    cell.append(el('p', { class: 'hint', style: 'text-align:center;padding:14px',
+      text: 'Nothing in this column.' }));
+  }
+  for (const item of items) {
+    cell.append(boardCard(item, current, blockedIds.has(item.id), earlyIds.has(item.id),
+      sprint.blocked.find((b) => b.id === item.id)));
+  }
+  box.append(cell);
+  return box;
+}
 
 function laneSplit(items, lanes) {
   if (lanes === 'none') return [{ key: '', label: '', items }];
@@ -2894,17 +2774,328 @@ function backlogRow(r) {
   return row;
 }
 
+/* ====================================================================== Ship
+ * Where the work is going, what is waiting to go, and what already went.
+ */
+
+/** Compare version strings like v2.1 numerically, so v10 beats v9. */
+function versionKey(text) {
+  const parts = String(text || '').replace(/^v/i, '').split('.')
+    .map((n) => parseInt(n, 10));
+  return parts.every((n) => Number.isFinite(n)) && parts.length
+    ? parts.concat([0, 0]).slice(0, 3) : null;
+}
+
+function compareVersions(a, b) {
+  const x = versionKey(a); const y = versionKey(b);
+  if (x && y) return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  if (x) return -1;
+  if (y) return 1;
+  return String(a).localeCompare(String(b));
+}
+
+/** The target we are working toward: the lowest one that is not finished. */
+function currentTarget(epics) {
+  const open = epics.filter((e) => e.state !== 'Done' && e.state !== 'Discarded'
+    && isSet(e.target));
+  if (!open.length) return '';
+  return open.map((e) => e.target).sort(compareVersions)[0];
+}
+
 VIEWS.ship = () => {
+  const repo = state.repo;
   const wrap = el('div', {});
+  const increment = repo.releases.increment;
+  const latest = repo.releases.versions[0];
+
   wrap.append(el('div', { class: 'page-head' },
     el('div', { class: 'grow' },
       el('h1', { class: 'page-title', text: 'Ship' }),
-      el('p', { class: 'page-sub',
-        text: `${state.repo.releases.increment.length} waiting · rolling velocity ${show(state.repo.history.rolling_velocity)}` }))));
-  wrap.append(VIEWS.releases());
-  wrap.append(VIEWS.sprints());
+      el('p', { class: 'page-sub', text: [
+        latest ? `at ${latest.version}` : 'nothing released yet',
+        `${increment.length} waiting in the Increment`,
+        isSet(repo.history.rolling_velocity)
+          ? `rolling velocity ${repo.history.rolling_velocity}` : null,
+      ].filter(Boolean).join(' · ') })),
+    el('button', { class: 'btn primary desktop-only', type: 'button',
+      onclick: cutReleaseForm, disabled: increment.length ? null : true }, 'Cut release')));
+
+  wrap.append(roadmap());
+  wrap.append(incrementPanel(increment));
+  wrap.append(velocityPanel());
+  wrap.append(releasesPanel());
   return wrap;
 };
+
+/* ------------------------------------------------------------- roadmap */
+
+function roadmap() {
+  const repo = state.repo;
+  const here = currentTarget(repo.epics);
+  const byTarget = new Map();
+  for (const epic of repo.epics) {
+    const key = isSet(epic.target) ? epic.target : '\u0000no-target';
+    if (!byTarget.has(key)) byTarget.set(key, []);
+    byTarget.get(key).push(epic);
+  }
+  const targets = [...byTarget.keys()].sort((a, b) => {
+    if (a === '\u0000no-target') return 1;       // the catch-all sits last
+    if (b === '\u0000no-target') return -1;
+    return compareVersions(a, b);
+  });
+
+  const section = el('section', { class: 'section' });
+  section.append(sectionHead('Roadmap', 'epics by the version they are aimed at'));
+  if (!targets.length) {
+    section.append(el('p', { class: 'empty', text: 'No epics yet.' }));
+    return section;
+  }
+
+  const cols = el('div', { class: 'roadmap' });
+  for (const key of targets) {
+    const epics = byTarget.get(key);
+    const label = key === '\u0000no-target' ? 'No target' : key;
+    const isHere = key === here;
+    const pts = epics.reduce((n, e) => n + ((e.rollup || {}).points_total || 0), 0);
+    const donePts = epics.reduce((n, e) => n + ((e.rollup || {}).points_done || 0), 0);
+
+    const col = el('div', { class: `road-col${isHere ? ' now' : ''}` });
+    col.append(el('div', { class: 'road-head' },
+      el('span', { class: 'mono road-v', text: label }),
+      isHere ? badge('next', 'accent') : null,
+      el('span', { class: 'mono hint', text: `${donePts}/${pts}p` })));
+    for (const epic of epics) {
+      const roll = epic.rollup || {};
+      col.append(el('div', { class: 'road-epic' },
+        el('div', { class: 'road-epic-top' },
+          stateChip('epic', epic.state),
+          el('button', { class: 'idlink', type: 'button',
+            onclick: () => openItemPage(epic.id) }, epic.id)),
+        el('div', { class: 'road-epic-title', text: show(epic.title) }),
+        meter(roll.points_done || 0, roll.points_total || 0)));
+    }
+    cols.append(col);
+  }
+  section.append(cols);
+  return section;
+}
+
+/* ----------------------------------------------------------- increment */
+
+function incrementPanel(increment) {
+  const section = el('section', { class: 'section' });
+  section.append(sectionHead('Increment', 'done, not yet released',
+    el('button', { class: 'btn small primary desktop-only', type: 'button',
+      onclick: cutReleaseForm, disabled: increment.length ? null : true }, 'Cut release')));
+  if (!increment.length) {
+    section.append(el('p', { class: 'empty', text: 'Nothing waiting to be released.' }));
+    return section;
+  }
+  const card = el('div', { class: 'card' });
+  for (const line of increment) {
+    card.append(el('div', { class: 'inc-row' },
+      line.id
+        ? el('button', { class: 'idlink', type: 'button',
+            onclick: () => openItemPage(line.id) }, line.id)
+        : el('span', { class: 'hint', text: '—' }),
+      prose(line.text.replace(new RegExp(`^${line.id}\\s*`), ''), 'span', { class: 'grow' })));
+  }
+  section.append(card);
+  return section;
+}
+
+/* ------------------------------------------------------------ velocity */
+
+function velocityPanel() {
+  const sprints = state.repo.history.sprints;
+  const section = el('section', { class: 'section' });
+  const showTable = remember('ship.velocityTable') === '1';
+  section.append(sectionHead('Velocity', 'completed points per closed sprint',
+    el('button', { class: 'btn small', type: 'button',
+      onclick: () => { remember('ship.velocityTable', showTable ? '0' : '1'); render(); } },
+      showTable ? 'View as chart' : 'View as table')));
+
+  if (!sprints.length) {
+    section.append(el('p', { class: 'empty', text: 'No closed sprints yet.' }));
+    return section;
+  }
+  section.append(showTable ? velocityTable(sprints) : velocityChart(sprints));
+  return section;
+}
+
+function velocityTable(sprints) {
+  return el('div', { class: 'scroll-x' },
+    el('table', { class: 'grid sprints' },
+      el('thead', {}, el('tr', {},
+        [['Sprint', ''], ['Start', 'date'], ['End', 'date'], ['Goal', 'wide'],
+         ['Committed', 'num'], ['Completed', 'num'], ['Velocity', 'num'],
+         ['Delivered', 'ids'], ['Retro', 'wide']]
+          .map(([h, cls]) => el('th', { class: cls, text: h })))),
+      el('tbody', {}, sprints.map((s) =>
+        el('tr', {},
+          el('td', { class: 'id' },
+            el('strong', { text: show(s.name) }),
+            isSet(s.title) ? el('div', { class: 'hint', text: s.title }) : null),
+          el('td', { class: 'date', text: show(s.start) }),
+          el('td', { class: 'date', text: show(s.end) }),
+          prose(s.goal, 'td', { class: 'wide' }),
+          el('td', { class: 'num', text: show(s.committed) }),
+          el('td', { class: 'num', text: show(s.completed) }),
+          el('td', { class: 'num strong', text: show(s.velocity) }),
+          el('td', { class: 'ids' }, idChips(s.delivered)),
+          el('td', { class: 'wide' }, retroList(s.retro)))))));
+}
+
+function retroList(notes) {
+  if (!notes || !notes.length) return document.createTextNode(EMPTY);
+  const box = el('div', { class: 'retro' });
+  for (const n of notes) {
+    box.append(el('div', { class: 'retro-row' },
+      n.label ? el('span', { class: 'retro-label', text: n.label }) : null,
+      el('span', {}, rich(n.note))));
+  }
+  return box;
+}
+
+/* One accent series, the last value labelled, and the rolling average as a
+ * dashed line labelled at the right. The table view carries every number. */
+function velocityChart(sprints) {
+  const data = sprints.slice().reverse().map((s) => ({
+    sprint: s, name: s.name, value: num(s.velocity), committed: num(s.committed),
+  }));
+  if (!data.length) return el('p', { class: 'empty', text: 'No closed sprints yet.' });
+
+  const W = 760, H = 230, padL = 34, padR = 54, padT = 20, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(...data.map((d) => Math.max(d.value, d.committed)), 1);
+  const ceiling = Math.max(4, Math.ceil(max / 4) * 4);
+  const band = plotW / data.length;
+  const barW = Math.min(24, Math.max(8, band - 14));
+  const y = (v) => padT + plotH - (v / ceiling) * plotH;
+  const x = (i) => padL + band * i + band / 2;
+
+  const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'vel', role: 'img' });
+  const caption = svg('title', {});
+  caption.textContent = `Velocity by sprint: ${data
+    .map((d) => `${d.name} ${d.value} of ${d.committed} points`).join('; ')}`;
+  chart.append(caption);
+
+  for (let i = 0; i <= 4; i++) {
+    const value = (ceiling / 4) * i;
+    const yy = y(value);
+    chart.append(svg('line', { x1: padL, x2: W - padR, y1: yy, y2: yy,
+      class: i === 0 ? 'axis' : 'gridline' }));
+    const tick = svg('text', { x: padL - 7, y: yy + 3.5, 'text-anchor': 'end', class: 'tick' });
+    tick.textContent = String(value);
+    chart.append(tick);
+  }
+
+  const shortName = (name) => {
+    const text = String(name || '').trim();
+    const tail = text.split(/[-\s/]/).filter(Boolean).pop() || text;
+    return tail.length <= 6 ? tail : tail.slice(-6);
+  };
+  const widest = Math.max(...data.map((d) => shortName(d.name).length), 1);
+  const every = Math.max(1, Math.ceil((widest * 6.6 + 8) / band));
+
+  data.forEach((d, i) => {
+    const left = x(i) - barW / 2;
+    const top = y(d.value);
+    const hit = svg('rect', { x: padL + band * i, y: padT, width: band, height: plotH,
+      class: 'bar-hit', tabindex: '0' });
+    const tip = svg('title', {});
+    tip.textContent = `${d.name} · ${d.value} of ${d.committed} committed`;
+    hit.append(tip);
+    chart.append(hit, svg('rect', { x: left, y: top, width: barW,
+      height: Math.max(0, padT + plotH - top), rx: Math.min(4, barW / 2), class: 'bar' }));
+
+    if ((data.length - 1 - i) % every === 0) {
+      const label = svg('text', { x: x(i), y: padT + plotH + 16,
+        'text-anchor': 'middle', class: 'cat' });
+      label.textContent = shortName(d.name);
+      chart.append(label);
+    }
+  });
+
+  // Rolling average over the last three, the same window the ledger uses.
+  const avg = data.map((_, i) => {
+    const window = data.slice(Math.max(0, i - 2), i + 1);
+    return window.reduce((n, d) => n + d.value, 0) / window.length;
+  });
+  if (data.length > 1) {
+    chart.append(svg('polyline', { class: 'vel-avg', fill: 'none',
+      points: avg.map((v, i) => `${x(i)},${y(v)}`).join(' ') }));
+    const lastAvg = avg[avg.length - 1];
+    const tag = svg('text', { x: W - padR + 6, y: y(lastAvg) + 4, class: 'vel-avg-label' });
+    tag.textContent = `avg ${Math.round(lastAvg)}`;
+    chart.append(tag);
+  }
+
+  // Only the last value is labelled; the rest live in the tooltip and the table.
+  const last = data[data.length - 1];
+  const value = svg('text', { x: x(data.length - 1), y: y(last.value) - 7,
+    'text-anchor': 'middle', class: 'direct' });
+  value.textContent = String(last.value);
+  chart.append(value);
+
+  return el('figure', { class: 'chart', style: 'margin:0' },
+    el('figcaption', { text: 'Points completed per closed sprint, oldest first. '
+      + 'The dashed line is the rolling average of the last three. Hover a bar for its sprint.' }),
+    chart);
+}
+
+/* ------------------------------------------------------------ releases */
+
+function releasesPanel() {
+  const versions = state.repo.releases.versions;
+  const section = el('section', { class: 'section' });
+  section.append(sectionHead('Releases', 'newest first',
+    versions.length
+      ? el('button', { class: 'btn small', type: 'button', onclick: copyReleaseNotes },
+          'Copy as release notes')
+      : null));
+  if (!versions.length) {
+    section.append(el('p', { class: 'empty', text: 'No releases cut yet.' }));
+    return section;
+  }
+  const stack = el('div', { class: 'stack' });
+  for (const v of versions) {
+    stack.append(el('div', { class: 'card rel' },
+      el('div', { class: 'rel-head' },
+        el('span', { class: 'mono rel-v', text: v.version }),
+        isSet(v.date) ? el('span', { class: 'mono hint', text: v.date }) : null),
+      el('h3', { class: 'rel-title', text: show(v.title) }),
+      isSet(v.theme) ? prose(v.theme, 'p', { class: 'rel-theme' }) : null,
+      el('div', { class: 'chips', style: 'margin-top:10px' },
+        v.stories.map((id) => el('button', { class: 'idlink', type: 'button',
+          onclick: () => openItemPage(id) }, id))),
+      v.epics.length
+        ? el('p', { class: 'hint', style: 'margin-top:8px',
+            text: `Epics touched: ${v.epics.join(', ')}` })
+        : null));
+  }
+  section.append(stack);
+  return section;
+}
+
+/** The version history as Markdown, ready to paste into a changelog. */
+function copyReleaseNotes() {
+  const repo = state.repo;
+  const lines = [`# ${repo.slug} — release notes`, ''];
+  for (const v of repo.releases.versions) {
+    lines.push(`## ${v.version}${isSet(v.title) ? ' — ' + v.title : ''}`
+      + (isSet(v.date) ? ` (${v.date})` : ''));
+    if (isSet(v.theme)) lines.push('', v.theme);
+    if (v.stories.length) lines.push('', `Stories: ${v.stories.join(', ')}`);
+    if (v.epics.length) lines.push(`Epics touched: ${v.epics.join(', ')}`);
+    lines.push('');
+  }
+  const text = lines.join('\n');
+  navigator.clipboard?.writeText(text).then(
+    () => toast('ok', 'Release notes copied',
+      `${repo.releases.versions.length} version(s) as Markdown`),
+    () => toast('warn', 'Could not reach the clipboard', 'Copy them from Files instead.'));
+}
 
 VIEWS.notfound = () => el('div', {},
   el('h1', { class: 'page-title', text: 'Not in this ledger' }),
@@ -3591,6 +3782,12 @@ async function boot() {
 
   state.route = parseHash();
   window.addEventListener('hashchange', onRoute);
+  try {
+    const phone = window.matchMedia(PHONE);
+    const onResize = () => { if (state.repo) render(); };
+    if (phone.addEventListener) phone.addEventListener('change', onResize);
+    else if (phone.addListener) phone.addListener(onResize);
+  } catch { /* no matchMedia — the CSS breakpoints still apply */ }
 
   await loadRepo(slug);
   loadCommands();

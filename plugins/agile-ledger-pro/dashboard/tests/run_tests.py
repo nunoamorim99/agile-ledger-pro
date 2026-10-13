@@ -685,6 +685,49 @@ def test_move_a_story_to_another_epic():
             check("no such epic" in str(exc), "with a message that says why")
 
 
+def test_retro_notes_are_parsed():
+    """The last thing the ledger held and the dashboard could not read."""
+    with Ledger() as led:
+        sprints = led.repo().history()["sprints"]
+        latest = sprints[0]
+        equal([n["label"] for n in latest["retro"]], ["Kept", "Try"],
+              "each note keeps its own label")
+        equal(latest["retro"][0]["note"], "short daily async check-ins",
+              "and the note itself")
+        equal([n["label"] for n in sprints[1]["retro"]], ["Kept"],
+              "a sprint with one note parses too")
+
+        # A sprint closed from the dashboard writes notes the same way.
+        led.run("close_sprint", retro_kept="pairing", retro_try="smaller stories")
+        fresh = led.repo().history()["sprints"][0]
+        labels = {n["label"]: n["note"] for n in fresh["retro"]}
+        equal(labels.get("Kept"), "pairing", "a closed sprint records what was kept")
+        equal(labels.get("Try"), "smaller stories", "and what to try")
+
+
+def test_retro_parser_stops_at_the_list():
+    """Only the bullets under the heading are notes."""
+    body = [
+        "Goal: something.",
+        "Retro notes:",
+        "- Kept: the standups",
+        "- Try: smaller stories",
+        "",
+        "Delivered: US-001",
+    ]
+    notes = parse._retro_notes(body)
+    equal([n["label"] for n in notes], ["Kept", "Try"], "two notes, not three")
+    check(all("Delivered" not in n["note"] for n in notes),
+          "the line after the list is not swallowed")
+
+    equal(parse._retro_notes(["Goal: x", "Committed: 3 pts"]), [],
+          "a sprint with no retro section yields nothing")
+
+    unlabelled = parse._retro_notes(["Retro notes:", "- just a thought"])
+    equal(unlabelled, [{"label": "", "note": "just a thought"}],
+          "a note with no label is kept whole")
+
+
 def test_markdown_helpers():
     lines = ["# T", "<!-- hidden", "- not an idea", "-->", "- real"]
     mask = mdutil.comment_mask(lines)

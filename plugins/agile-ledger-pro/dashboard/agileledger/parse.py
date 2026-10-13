@@ -580,6 +580,41 @@ def _split_range(dates: str) -> tuple[str, str]:
     return (parts[0], parts[1]) if len(parts) == 2 else (text, "")
 
 
+def _retro_notes(body: list[str]) -> list[dict]:
+    """The bullets under ``Retro notes:`` in a closed sprint.
+
+    A line usually opens with its own label (``- Kept: …``, ``- Try: …``), so
+    keep that label separate from the note rather than flattening it — it is
+    how the team already files what they learned.
+    """
+    mask = comment_mask(body)
+    start = None
+    for i, line in enumerate(body):
+        if not mask[i] and re.match(r"^\s*retro notes:?\s*$", line, re.IGNORECASE):
+            start = i + 1
+            break
+    if start is None:
+        return []
+
+    out = []
+    for i in range(start, len(body)):
+        if mask[i]:
+            continue
+        line = body[i]
+        if line.strip() and not re.match(r"^\s{0,3}[-*]\s+", line):
+            break                       # the list ended; anything else is not a note
+        m = re.match(r"^\s{0,3}[-*]\s+(.*)$", line)
+        if not m or not m.group(1).strip():
+            continue
+        text = m.group(1).strip()
+        label, _, rest = text.partition(":")
+        if rest.strip() and len(label) <= 24:
+            out.append({"label": label.strip(), "note": rest.strip()})
+        else:
+            out.append({"label": "", "note": text})
+    return out
+
+
 def parse_history(lines: list[str]) -> dict:
     velocity_line = mdutil.bold_field(lines, "Rolling velocity (last 3 sprints)")
     sprints = []
@@ -626,6 +661,7 @@ def parse_history(lines: list[str]) -> dict:
                 r"\b((?:US|BUG)-\d+)\b", grab("Delivered"), re.IGNORECASE)],
             "carried": [i.upper() for i in re.findall(
                 r"\b((?:US|BUG)-\d+)\b", grab("Carried over"), re.IGNORECASE)],
+            "retro": _retro_notes(body),
             "span": (start, end),
         })
     return {"rolling_velocity": clean(velocity_line), "sprints": sprints}
