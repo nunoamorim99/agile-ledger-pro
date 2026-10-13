@@ -187,7 +187,12 @@ table.grid .id { font-family: var(--mono); font-size: 12px; white-space: nowrap;
 .modal-foot { padding: 12px 15px; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
 .modal-note { margin: 0; flex: 1 1 auto; font-size: 12px; color: var(--muted); }
 .modal-actions { display: flex; gap: 8px; }
-.form-row { display: grid; gap: 5px; }
+/* align-content:start, or the rows stretch. Side-by-side fields are equal-height
+   grid items, so a field carrying a hint has three rows against its neighbour's
+   two; the free space was shared out between them and the two inputs came to
+   rest at different heights. Pinning the rows to the top lines the inputs up
+   and lets the hint hang below. */
+.form-row { display: grid; gap: 5px; align-content: start; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .hint { font-size: 11px; color: var(--muted); }
 

@@ -1014,7 +1014,7 @@ def test_control_primitives_survive():
     css = (HERE.parent / "static" / "style.css").read_text(encoding="utf-8")
 
     for selector in (".btn", ".control", ".filter", ".menu", ".nav", ".card",
-                     ".brand", ".proj", ".drawer-actions"):
+                     ".brand", ".proj", ".drawer-actions", ".form-row", ".form-grid"):
         check(re.search(r"(?m)^" + re.escape(selector) + r"[ ,]", css) is not None,
               f"style.css still defines a base {selector} rule")
 
