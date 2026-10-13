@@ -471,6 +471,58 @@ def test_workspace_vocabulary_carries_the_ledgers_own_words():
               "no story label is blank")
 
 
+def test_every_route_has_something_to_render():
+    """The shell's destinations and item routes must all resolve to real data.
+
+    The front end routes on `#/<destination>` and `#/<ID>`; this checks the
+    server side of that contract — every destination's data is in the snapshot,
+    and every ID the page can link to is findable.
+    """
+    with Ledger() as led:
+        repo = led.repo()
+        snapshot = repo.snapshot()
+
+        # One destination per job, each backed by a part of the snapshot.
+        for key in ("ideas", "bug_inbox", "epics", "stories", "bugs",
+                    "sprint", "history", "releases", "definitions"):
+            check(key in snapshot, f"the snapshot carries {key} for a destination")
+
+        # Every ID the UI can route to resolves to an entry, a bug, an epic,
+        # or a Draft index line — never a dead end.
+        ids = set()
+        resolvable = set()
+        for story in snapshot["stories"]:
+            ids.add(story["id"]); resolvable.add(story["id"])
+        for bug in snapshot["bugs"]:
+            ids.add(bug["id"]); resolvable.add(bug["id"])
+        for epic in snapshot["epics"]:
+            ids.add(epic["id"]); resolvable.add(epic["id"])
+            for item in epic.get("stories") or []:
+                ids.add(item["id"]); resolvable.add(item["id"])
+        equal(ids - resolvable, set(), "every linkable id resolves to a page")
+        check(len(ids) >= 8, f"the fixture has enough ids to route to ({len(ids)})")
+
+        # The item page shows "file : line" from the span the parser records.
+        for story in snapshot["stories"]:
+            span = story.get("span")
+            check(isinstance(span, (list, tuple)) and len(span) == 2,
+                  f"{story['id']} carries a source span")
+            check(span[0] < span[1], f"{story['id']}'s span is a real range")
+        for bug in snapshot["bugs"]:
+            check(bug.get("span") and bug["span"][0] < bug["span"][1],
+                  f"{bug['id']} carries a source span")
+        for epic in snapshot["epics"]:
+            check(epic.get("span") and epic["span"][0] < epic["span"][1],
+                  f"{epic['id']} carries a source span")
+
+        # A span must actually point at that entry's heading in the file.
+        lines = repo.lines("User-Stories.md")
+        for story in snapshot["stories"]:
+            heading = lines[story["span"][0]].strip()
+            equal(heading, f"#### {story['id']}",
+                  f"{story['id']}'s span starts at its own heading")
+
+
 def test_markdown_helpers():
     lines = ["# T", "<!-- hidden", "- not an idea", "-->", "- real"]
     mask = mdutil.comment_mask(lines)

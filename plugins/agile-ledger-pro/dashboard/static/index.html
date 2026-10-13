@@ -10,44 +10,72 @@
 </head>
 <body>
 
-<header class="topbar">
-  <button class="brand" type="button" id="brand" aria-label="Agile Ledger Pro — Overview">
-    <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" style="fill: var(--accent)"/>
-      <path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none"
-            style="stroke: var(--on-accent)" stroke-width="3"
-            stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <span class="brand-name">Agile Ledger</span><span class="brand-pro">Pro</span>
-  </button>
+<a class="skip" href="#main">Skip to content</a>
 
-  <label class="field inline">
-    <span class="field-label">Project</span>
-    <select id="repo-picker" aria-label="Project"></select>
-  </label>
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Sections">
+    <a class="brand" href="#/today" aria-label="Agile Ledger Pro — Today">
+      <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="8" style="fill: var(--accent)"/>
+        <path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none"
+              style="stroke: var(--on-accent)" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">Agile Ledger</span><span class="brand-pro">Pro</span>
+    </a>
 
-  <label class="field inline">
-    <span class="field-label">Person</span>
-    <select id="person-picker" aria-label="Filter by assignee"></select>
-  </label>
+    <button class="proj" id="proj" type="button" aria-haspopup="listbox">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" class="proj-icon">
+        <path d="M1.75 4.25A1.5 1.5 0 0 1 3.25 2.75h2.9l1.4 1.5h5.2a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 12.75 13.25h-9.5a1.5 1.5 0 0 1-1.5-1.5Z"
+              fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+      <span class="proj-text">
+        <span class="proj-name" id="proj-name">—</span>
+        <span class="proj-sub mono" id="proj-sub"></span>
+      </span>
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M3 4.75 6 7.75 9 4.75" fill="none" stroke="currentColor"
+              stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <select id="repo-picker" class="proj-select" aria-label="Project"></select>
 
-  <div class="spacer"></div>
+    <div id="rail-nav"></div>
 
-  <span id="ledger-path" class="ledger-path" title=""></span>
-  <button id="commit-btn" class="btn" type="button">Commit ledger</button>
-  <button id="theme-btn" class="btn icon" type="button" aria-label="Switch theme" title="Switch theme">◐</button>
-</header>
+    <div class="rail-foot">
+      <button class="who" id="who" type="button">
+        <span class="av" id="who-initial" aria-hidden="true">?</span>
+        <span class="who-text">
+          <span class="who-label">Viewing as</span>
+          <span class="who-name" id="who-name">Everyone</span>
+        </span>
+      </button>
+      <select id="person-picker" class="proj-select" aria-label="Viewing as"></select>
 
-<nav class="tabs" id="tabs" role="tablist"></nav>
+      <div class="trust" id="trust" aria-live="polite"></div>
 
-<main id="view" class="view" role="main" aria-live="polite"></main>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="auto">Auto</button>
+        <button type="button" data-theme-set="light">Light</button>
+        <button type="button" data-theme-set="dark">Dark</button>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main" class="main" role="main"></main>
+</div>
+
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
 
 <div id="drawer" class="drawer" hidden aria-hidden="true">
   <div class="drawer-scrim" data-close="1"></div>
   <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
     <header class="drawer-head">
       <h2 id="drawer-title"></h2>
-      <button class="btn icon" type="button" data-close="1" aria-label="Close">✕</button>
+      <div class="drawer-actions">
+        <button class="btn small" type="button" id="drawer-open">Open ↗</button>
+        <button class="btn icon ghost" type="button" data-close="1" aria-label="Close">✕</button>
+      </div>
     </header>
     <div id="drawer-body" class="drawer-body"></div>
   </aside>
@@ -58,7 +86,7 @@
   <form class="modal-panel" id="modal-form" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <header class="modal-head">
       <h2 id="modal-title"></h2>
-      <button class="btn icon" type="button" data-close="1" aria-label="Close">✕</button>
+      <button class="btn icon ghost" type="button" data-close="1" aria-label="Close">✕</button>
     </header>
     <div id="modal-body" class="modal-body"></div>
     <footer class="modal-foot">
@@ -69,6 +97,27 @@
       </div>
     </footer>
   </form>
+</div>
+
+<div id="palette" class="palette" hidden aria-hidden="true">
+  <div class="palette-scrim" data-close="1"></div>
+  <div class="palette-panel" role="dialog" aria-modal="true" aria-label="Search and commands">
+    <div class="palette-input">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <input type="text" id="palette-q" autocomplete="off" spellcheck="false"
+             placeholder="Search items, or run a command…" aria-label="Search">
+      <kbd class="kbd">Esc</kbd>
+    </div>
+    <div class="palette-results" id="palette-results" role="listbox"></div>
+    <div class="palette-foot">
+      <span><kbd class="kbd">↑↓</kbd> move</span>
+      <span><kbd class="kbd">↵</kbd> open</span>
+      <span><kbd class="kbd">⇧↵</kbd> peek</span>
+    </div>
+  </div>
 </div>
 
 <div id="toasts" class="toasts" aria-live="assertive"></div>

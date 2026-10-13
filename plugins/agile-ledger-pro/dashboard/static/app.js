@@ -16,9 +16,13 @@ const state = {
   repo: null,
   slug: null,
   person: '',
-  tab: 'overview',
+  route: null,
   revision: 0,
   commands: null,
+  syncedAt: null,
+  externalEdit: false,
+  pendingOwnWrite: false,
+  drift: null,
 };
 
 /* ------------------------------------------------------------------ utils */
@@ -164,9 +168,11 @@ async function act(action, params, successTitle) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, params: params || {} }),
     });
+    state.pendingOwnWrite = true;
     if (result.repo) {
       state.repo = result.repo;
       state.revision = result.repo.revision;
+      state.syncedAt = Date.now();
     }
     const warnings = result.warnings || [];
     toast(warnings.length ? 'warn' : 'ok',
@@ -970,12 +976,6 @@ const ACTION_VIEW = {
   detail_story: 'stories', move_board_item: 'board', complete_item: 'board',
 };
 
-function goTo(tab) {
-  state.tab = tab;
-  location.hash = tab;
-  render();
-}
-
 function copyCommand(text) {
   navigator.clipboard?.writeText(text).then(
     () => toast('ok', 'Copied', text),
@@ -1049,7 +1049,7 @@ VIEWS.commands = () => {
 async function loadCommands() {
   try {
     state.commands = await api('/api/commands');
-    if (state.tab === 'commands') render();
+    if (state.route && state.route.name === 'commands') render();
   } catch (error) {
     toast('err', 'Could not load the command sheet', error.message);
   }
@@ -1060,15 +1060,20 @@ VIEWS.files = () => {
   wrap.append(sectionHead('Ledger files', 'the Markdown this page is built from',
     el('button', { class: 'btn', type: 'button', onclick: runCheck }, 'Run ledger check')));
   const pre = el('pre', { class: 'source', text: 'Pick a file…' });
+  const wanted = state.route && state.route.param;
+  const load = async (name) => {
+    try {
+      const data = await api(`/api/repo/${encodeURIComponent(state.slug)}/file/${encodeURIComponent(name)}`);
+      pre.textContent = data.text;
+    } catch (error) { pre.textContent = `Could not read ${name}: ${error.message}`; }
+  };
   const picker = el('div', { class: 'chips', style: 'margin-bottom:12px' },
     state.workspace.vocabulary.files.map((name) =>
-      el('button', { class: 'btn small', type: 'button', onclick: async () => {
-        try {
-          const data = await api(`/api/repo/${encodeURIComponent(state.slug)}/file/${encodeURIComponent(name)}`);
-          pre.textContent = data.text;
-        } catch (error) { pre.textContent = `Could not read ${name}: ${error.message}`; }
-      } }, name)));
+      el('button', { class: `btn small${name === wanted ? ' primary' : ''}`, type: 'button',
+        onclick: () => { location.hash = `#/files/${encodeURIComponent(name)}`; } }, name)));
   wrap.append(picker, pre);
+  // #/files/<name> is a real address, so a link to a file opens it.
+  if (wanted) load(wanted);
   return wrap;
 };
 
@@ -1196,13 +1201,15 @@ async function changeStoryState(story, name) {
   closeDrawer();
 }
 
-function branchFor(item) {
+function branchFor(item, justReturn) {
   const slug = String(item.title || '').toLowerCase().split(/\s+/)
     .map((w) => w.replace(/[^a-z0-9]/g, '')).filter(Boolean).slice(0, 5).join('-');
   const branch = `${item.id.toLowerCase()}-${slug || 'work'}`;
+  if (justReturn) return branch;
   navigator.clipboard?.writeText(branch).then(
     () => toast('ok', 'Branch name copied', branch),
     () => toast('warn', 'Branch name', branch));
+  return branch;
 }
 
 /* -------------------------------------------------------------- the forms */
@@ -1435,8 +1442,10 @@ function cutReleaseForm() {
 
 async function runCheck() {
   const result = await act('check', {}, 'Ledger check');
-  if (result.issues && result.issues.length) {
-    toast('warn', `${result.issues.length} issue(s)`, null, result.issues);
+  state.drift = result.issues || [];
+  render();
+  if (state.drift.length) {
+    toast('warn', `${state.drift.length} issue(s)`, 'Shown on Health', state.drift.slice(0, 4));
   }
 }
 
@@ -1453,56 +1462,795 @@ function commitForm() {
 
 /* ------------------------------------------------------------------ chrome */
 
-const TABS = [
-  ['overview', 'Overview'], ['board', 'Board'], ['ideas', 'Inbox'],
-  ['epics', 'Epics'], ['stories', 'Stories'], ['bugs', 'Bugs'],
-  ['sprints', 'Sprints'], ['releases', 'Releases'], ['files', 'Files'],
-  ['commands', 'Commands'],
+/* ====================================================================== shell
+ * Five jobs in a left rail, plus the ledger's own files one click away.
+ * Routing is hash-based so every destination and every item has a URL that
+ * back/forward, bookmarks and the ⌘K palette can all reach.
+ */
+
+const ITEM_RE = /^(US|BUG|EPIC|TASK)-\d+$/i;
+
+const DESTINATIONS = [
+  { route: 'today',    label: 'Today',    view: 'today',
+    icon: 'M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M8 5.25A2.75 2.75 0 1 1 8 10.75 2.75 2.75 0 0 1 8 5.25Z',
+    count: () => needsYou().length },
+  { route: 'inbox',    label: 'Inbox',    view: 'ideas',
+    icon: 'M2 9.5h3l1 2h4l1-2h3M2.75 9.5 4.5 3.5h7l1.75 6v3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1Z',
+    count: (r) => r.ideas.length + r.bug_inbox.length },
+  { route: 'backlog',  label: 'Backlog',  view: 'backlog',
+    icon: 'M3 4h10M3 8h10M3 12h6',
+    count: (r) => r.stats.ready },
+  { route: 'sprint',   label: 'Sprint',   view: 'board',
+    icon: 'M3 2.5v11M3 3.5h9l-1.6 2.6L12 8.7H3Z',
+    count: (r) => Object.values(r.sprint.board).reduce((n, i) => n + i.length, 0) },
+  { route: 'ship',     label: 'Ship',     view: 'ship',
+    icon: 'M2.5 11.5h11M4 11.5V6.5l4-4 4 4v5M6.5 11.5V8.5h3v3',
+    count: (r) => r.releases.increment.length },
 ];
 
-function counts() {
-  const repo = state.repo;
-  if (!repo) return {};
-  return {
-    ideas: repo.ideas.length + repo.bug_inbox.length,
-    epics: repo.epics.length,
-    stories: repo.stories.length,
-    bugs: repo.stats.open_bugs,
-    board: Object.values(repo.sprint.board).reduce((n, items) => n + items.length, 0),
-    releases: repo.releases.increment.length,
-  };
+const LEDGER_DESTINATIONS = [
+  { route: 'health',   label: 'Health',   view: 'health',
+    icon: 'M8 13.5S2.5 10.2 2.5 6.4A2.9 2.9 0 0 1 8 5a2.9 2.9 0 0 1 5.5 1.4c0 3.8-5.5 7.1-5.5 7.1Z',
+    warn: true, count: () => healthCount() },
+  { route: 'files',    label: 'Files',    view: 'files',
+    icon: 'M4 2.5h5l3 3v8h-8ZM9 2.5v3h3' },
+  { route: 'commands', label: 'Commands', view: 'commands',
+    icon: 'M4 6 6.5 8.5 4 11M8.5 11.5H12' },
+];
+
+const ALL_DESTINATIONS = [...DESTINATIONS, ...LEDGER_DESTINATIONS];
+
+function navIcon(d) {
+  return svg('svg', { class: 'glyph', width: 16, height: 16, viewBox: '0 0 16 16',
+    'aria-hidden': 'true' },
+    svg('path', { d: d.icon, fill: 'none', stroke: 'currentColor',
+      'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
 }
 
-function renderTabs() {
-  const bar = document.getElementById('tabs');
-  const n = counts();
-  bar.replaceChildren(...TABS.map(([id, label]) => {
-    const node = el('button', { class: 'tab', type: 'button', role: 'tab',
-      'aria-selected': String(id === state.tab),
-      onclick: () => { state.tab = id; location.hash = id; render(); } },
-      label);
-    if (n[id]) node.append(el('span', { class: 'count', text: String(n[id]) }));
-    return node;
-  }));
+/* ------------------------------------------------------------------ router */
+
+function parseHash() {
+  const raw = (location.hash || '').replace(/^#\/?/, '');
+  if (!raw) return { name: 'today' };
+  const [head, ...rest] = raw.split('/');
+  if (ITEM_RE.test(head)) return { name: 'item', id: head.toUpperCase() };
+  const dest = ALL_DESTINATIONS.find((d) => d.route === head);
+  if (dest) return { name: dest.route, param: decodeURIComponent(rest.join('/') || '') };
+  return { name: 'notfound', param: head };
 }
 
-function renderPeople() {
-  const picker = document.getElementById('person-picker');
+/* The command sheet and older callers still name the file-shaped views; map
+ * those onto the five jobs rather than 404 on them. */
+const VIEW_ROUTE = {
+  overview: 'today', today: 'today', ideas: 'inbox', inbox: 'inbox',
+  epics: 'backlog', stories: 'backlog', bugs: 'backlog', backlog: 'backlog',
+  board: 'sprint', sprint: 'sprint',
+  releases: 'ship', sprints: 'ship', ship: 'ship',
+  health: 'health', files: 'files', commands: 'commands',
+};
+
+function goTo(route) {
+  location.hash = '#/' + (VIEW_ROUTE[route] || route);
+}
+
+function openItemPage(id) { location.hash = '#/' + id.toUpperCase(); }
+
+/** Remember where each destination was scrolled to, and go back to it. */
+const scrollMemory = new Map();
+
+function onRoute() {
+  const previous = state.route;
+  if (previous) scrollMemory.set(routeKey(previous), window.scrollY);
+  state.route = parseHash();
+  render();
+  const remembered = scrollMemory.get(routeKey(state.route));
+  window.scrollTo(0, state.route.name === 'item' ? 0 : (remembered || 0));
+}
+
+const routeKey = (r) => r.name + (r.param ? '/' + r.param : '') + (r.id || '');
+
+/* --------------------------------------------------------------- the rail */
+
+function needsYou() {
+  /* The rules that are pure derivations of the snapshot. Phase 3 builds the
+   * Today screen on top of these; the rail needs the count now. */
   const repo = state.repo;
-  const people = new Set();
-  if (repo) {
-    for (const s of repo.stories) if (isSet(s.assignee)) people.add(nameOf(s.assignee));
-    for (const b of repo.bugs) if (isSet(b.assignee)) people.add(nameOf(b.assignee));
-    const me = repo.definitions.config && repo.definitions.config.Me;
-    if (me) people.add(me);
+  if (!repo) return [];
+  const out = [];
+  const stories = Object.fromEntries(repo.stories.map((s) => [s.id, s]));
+
+  for (const b of repo.sprint.blocked) {
+    out.push({ kind: 'blocked', id: b.id, title: `${b.id} is blocked`, detail: b.reason });
   }
-  const previous = state.person;
-  picker.replaceChildren(
-    el('option', { value: '', text: 'Everyone' }),
-    ...[...people].sort().map((p) => el('option', { value: p, text: p })));
-  picker.value = previous;
-  if (picker.value !== previous) state.person = picker.value;
+  const waiting = repo.ideas.length + repo.bug_inbox.length;
+  if (waiting) {
+    out.push({ kind: 'triage', title: `${waiting} to triage`,
+      detail: `${repo.ideas.length} idea(s), ${repo.bug_inbox.length} bug report(s)` });
+  }
+  for (const s of repo.stories) {
+    if (s.state !== 'Ready') continue;
+    const missing = [];
+    if (!isSet(s.story)) missing.push('story sentence');
+    if (!s.criteria.length && !s.criteria_met) missing.push('acceptance criteria');
+    if (!isSet(s.estimate)) missing.push('estimate');
+    if (!isSet(s.priority)) missing.push('priority');
+    if (missing.length) {
+      out.push({ kind: 'dor', id: s.id, title: `${s.id} is not Ready`,
+        detail: `missing ${missing.join(', ')}` });
+    }
+  }
+  for (const s of repo.stories) {
+    if (s.state !== 'In Sprint') continue;
+    const unmet = (s.dependencies || []).filter(
+      (d) => stories[d] && stories[d].state !== 'Delivered');
+    if (unmet.length) {
+      out.push({ kind: 'early', id: s.id,
+        title: `${s.id} started before its dependency`,
+        detail: `needs ${unmet.join(', ')}` });
+    }
+  }
+  if (repo.releases.increment.length) {
+    out.push({ kind: 'release',
+      title: `${repo.releases.increment.length} delivered item(s) aren't in a release`,
+      detail: 'the Increment is waiting for a version' });
+  }
+  const git = state.workspace && state.workspace.git;
+  if (git && git.dirty) {
+    out.push({ kind: 'commit', title: `${git.changes.length} uncommitted ledger file(s)`,
+      detail: `on ${git.branch}` });
+  }
+  return out;
 }
+
+function healthCount() {
+  const findings = needsYou().filter((f) => f.kind === 'dor' || f.kind === 'early');
+  return findings.length + (state.drift ? state.drift.length : 0);
+}
+
+function renderRail() {
+  const host = document.getElementById('rail-nav');
+  const bar = document.getElementById('tabbar');
+  if (!host) return;
+  const repo = state.repo;
+  host.replaceChildren();
+
+  const link = (d) => {
+    const here = state.route && state.route.name === d.route;
+    const n = repo && d.count ? d.count(repo) : 0;
+    const node = el('a', { class: 'nav', href: '#/' + d.route,
+      'aria-current': here ? 'page' : null }, navIcon(d), el('span', { text: d.label }));
+    if (n) node.append(el('span', { class: `n${d.warn ? ' n-w' : ''}`, text: String(n) }));
+    return node;
+  };
+
+  for (const d of DESTINATIONS) host.append(link(d));
+  host.append(el('div', { class: 'nav-label', text: 'Ledger' }));
+  for (const d of LEDGER_DESTINATIONS) host.append(link(d));
+
+  // Phone: the first four plus More (Ship + the ledger group).
+  if (bar) {
+    const phone = [...DESTINATIONS.slice(0, 4),
+      { route: 'ship', label: 'More', view: 'ship', icon: 'M3 8h.01M8 8h.01M13 8h.01' }];
+    bar.replaceChildren(...phone.map((d) => {
+      const here = state.route && (state.route.name === d.route
+        || (d.label === 'More' && LEDGER_DESTINATIONS.some((x) => x.route === state.route.name)));
+      const n = repo && d.count ? d.count(repo) : 0;
+      return el('button', { type: 'button', 'aria-current': here ? 'page' : null,
+        onclick: () => goTo(d.route) },
+        navIcon(d),
+        el('span', { text: d.label }),
+        n ? el('span', { class: 'n', text: String(n) }) : null);
+    }));
+  }
+}
+
+/* ---------------------------------------------------------- the trust line */
+
+function renderTrust() {
+  const host = document.getElementById('trust');
+  if (!host || !state.workspace) return;
+  const files = state.repo
+    ? state.workspace.vocabulary.files.length - (state.repo.missing_files || []).length : 0;
+  const since = state.syncedAt ? Math.max(0, Math.round((Date.now() - state.syncedAt) / 1000)) : null;
+  const ago = since === null ? 'never'
+    : since < 5 ? 'just now'
+    : since < 90 ? `${since}s ago`
+    : `${Math.round(since / 60)}m ago`;
+
+  host.replaceChildren(
+    el('div', { class: 'trust-line' },
+      el('span', { class: `trust-dot${since !== null && since > 60 ? ' stale' : ''}` }),
+      el('span', { text: `${files} files · synced ${ago}` })));
+
+  const git = state.workspace.git;
+  if (git && git.dirty) {
+    host.append(el('div', { class: 'trust-line' },
+      el('span', { text: `${git.changes.length} uncommitted · ` }),
+      el('button', { type: 'button', onclick: commitForm }, 'Commit…')));
+  }
+  if (state.externalEdit) {
+    host.classList.add('pulse');
+    setTimeout(() => host.classList.remove('pulse'), 2400);
+    state.externalEdit = false;
+  }
+}
+
+/* ------------------------------------------------------------- the views */
+
+VIEWS.today = () => {
+  const wrap = el('div', {});
+  const findings = needsYou();
+  const sprint = state.repo.sprint;
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: greeting() }),
+      el('p', { class: 'page-sub', text: [
+        today(),
+        isSet(sprint.name) ? `sprint ${sprint.name}` : 'no sprint open',
+        findings.length ? `${findings.length} thing(s) need you` : 'nothing needs you',
+      ].join(' · ') }))));
+  // Phase 3 turns these into the full Needs-you queue; for now the existing
+  // overview keeps every number reachable.
+  wrap.append(VIEWS.overview());
+  return wrap;
+};
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+function today() {
+  return new Date().toLocaleDateString(undefined,
+    { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** Backlog gathers what used to be three tabs; Phase 4 makes it one outline. */
+VIEWS.backlog = () => {
+  const wrap = el('div', {});
+  const groups = [['epics', 'Epics'], ['stories', 'Stories'], ['bugs', 'Bugs']];
+  let current = remember('backlog.group') || 'epics';
+  if (!groups.some(([k]) => k === current)) current = 'epics';
+
+  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Backlog view' },
+    groups.map(([key, label]) => el('button', { type: 'button',
+      'aria-pressed': String(key === current),
+      onclick: () => { remember('backlog.group', key); render(); } }, label)));
+
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: 'Backlog' }),
+      el('p', { class: 'page-sub',
+        text: `${state.repo.stats.ready} Ready · ${state.repo.stats.ready_points} pts` })),
+    seg));
+  wrap.append(VIEWS[current]());
+  return wrap;
+};
+
+VIEWS.ship = () => {
+  const wrap = el('div', {});
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: 'Ship' }),
+      el('p', { class: 'page-sub',
+        text: `${state.repo.releases.increment.length} waiting · rolling velocity ${show(state.repo.history.rolling_velocity)}` }))));
+  wrap.append(VIEWS.releases());
+  wrap.append(VIEWS.sprints());
+  return wrap;
+};
+
+VIEWS.health = () => {
+  const wrap = el('div', {});
+  const findings = needsYou().filter((f) => f.kind === 'dor' || f.kind === 'early');
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: 'Health' }),
+      el('p', { class: 'page-sub', text: 'what the ledger says is wrong with itself' })),
+    el('button', { class: 'btn', type: 'button', onclick: runCheck }, 'Run ledger check')));
+
+  const section = (title, rows, empty) => el('section', { class: 'section' },
+    sectionHead(title, `${rows.length}`),
+    rows.length
+      ? el('div', { class: 'stack' }, rows.map((f) => el('div', { class: 'item' },
+          el('div', { class: 'grow' },
+            el('strong', { text: f.title || f }),
+            f.detail ? el('div', { class: 'hint', text: f.detail }) : null),
+          f.id ? el('button', { class: 'btn small', type: 'button',
+            onclick: () => openItemPage(f.id) }, 'Open') : null)))
+      : el('p', { class: 'empty', text: empty }));
+
+  wrap.append(section('Fails Definition of Ready',
+    findings.filter((f) => f.kind === 'dor'), 'Every Ready story has what it needs.'));
+  wrap.append(section('Started before a dependency',
+    findings.filter((f) => f.kind === 'early'), 'Nothing started early.'));
+  wrap.append(section('Ledger drift',
+    (state.drift || []).map((d) => ({ title: d })),
+    state.drift ? 'No drift found.' : 'Run the ledger check to look for drift.'));
+
+  const git = state.workspace && state.workspace.git;
+  if (git && git.dirty) {
+    wrap.append(el('section', { class: 'section' },
+      sectionHead('Uncommitted', `${git.changes.length}`,
+        el('button', { class: 'btn small', type: 'button', onclick: commitForm }, 'Commit…')),
+      el('pre', { class: 'source', text: git.changes.join('\n') })));
+  }
+  return wrap;
+};
+
+VIEWS.notfound = () => el('div', {},
+  el('h1', { class: 'page-title', text: 'Not in this ledger' }),
+  el('p', { class: 'page-sub',
+    text: `Nothing here matches “${show(state.route.param)}”.` }),
+  el('div', { style: 'margin-top:14px' },
+    el('button', { class: 'btn primary', type: 'button', onclick: openPalette }, 'Search…')));
+
+/* ------------------------------------------------------------- item page */
+
+VIEWS.item = () => {
+  const id = state.route.id;
+  const repo = state.repo;
+  const story = repo.stories.find((s) => s.id === id);
+  const bug = repo.bugs.find((b) => b.id === id);
+  const epic = repo.epics.find((e) => e.id === id);
+  if (!story && !bug && !epic) {
+    const draft = repo.epics.flatMap((e) => (e.stories || [])
+      .filter((i) => i.id === id).map((i) => ({ ...i, epic: e })))[0];
+    if (draft) return draftPage(draft);
+    return el('div', {},
+      el('h1', { class: 'page-title', text: 'Not in this ledger' }),
+      el('p', { class: 'page-sub', text: `${id} has no entry here.` }),
+      el('div', { style: 'margin-top:14px' },
+        el('button', { class: 'btn', type: 'button', onclick: openPalette }, 'Search…')));
+  }
+  if (epic) return epicPage(epic);
+  return story ? itemPage(story, 'story') : itemPage(bug, 'bug');
+};
+
+function crumb(...parts) {
+  const row = el('div', { class: 'crumb' });
+  parts.forEach((p, i) => {
+    if (i) row.append(el('span', { text: '/' }));
+    row.append(p);
+  });
+  return row;
+}
+
+function copyLink(id) {
+  const url = `${location.origin}${location.pathname}#/${id}`;
+  navigator.clipboard?.writeText(url).then(
+    () => toast('ok', 'Link copied', url),
+    () => toast('warn', 'Link', url));
+}
+
+function sourceBlock(file, span) {
+  const row = el('div', { class: 'source' });
+  if (!span) return row;
+  row.append(el('span', { text: `${file} : ${span[0] + 1}–${span[1]}` }));
+  row.append(el('button', { class: 'btn small ghost', type: 'button',
+    onclick: () => { location.hash = `#/files/${encodeURIComponent(file)}`; } }, 'Open in Files'));
+  return row;
+}
+
+const STORY_TRACK = ['Draft', 'Ready', 'In Sprint', 'Delivered'];
+
+function lifecycleTrack(stateName, column) {
+  const at = STORY_TRACK.indexOf(stateName);
+  const track = el('div', { class: 'track', role: 'img',
+    'aria-label': `Lifecycle: ${stateName}${column ? ', ' + column : ''}` });
+  STORY_TRACK.forEach((name, i) => {
+    const now = name === stateName;
+    const step = el('div', { class: `track-step${now ? ' now' : (at > i ? ' done' : '')}` },
+      el('span', { text: name }));
+    if (now && name === 'In Sprint') {
+      const cols = el('span', { class: 'track-cols' });
+      for (const c of state.workspace.vocabulary.board_columns) {
+        cols.append(el('span', { class: `track-col${c === column ? ' now' : ''}`, text: c }));
+      }
+      step.append(cols);
+    }
+    track.append(step);
+  });
+  return track;
+}
+
+function itemPage(item, entity) {
+  const repo = state.repo;
+  const column = boardColumn(item.id);
+  const isStory = entity === 'story';
+  const wrap = el('div', {});
+
+  wrap.append(crumb(
+    el('button', { type: 'button', onclick: () => goTo('backlog') }, 'Backlog'),
+    item.parent ? el('button', { type: 'button',
+      onclick: () => openItemPage(item.parent) }, item.parent) : null,
+    el('span', { class: 'mono', text: item.id })));
+
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('div', { class: 'chips', style: 'margin-bottom:8px' },
+        stateChip(entity, item.state, { column }),
+        priorityMark(item.priority),
+        !isStory ? severityPill(item.severity) : null,
+        isSet(item.estimate) ? badge(`${item.estimate} pts`) : null,
+        isSet(item.assignee) ? badge(item.assignee) : null),
+      el('h1', { class: 'page-title', text: show(item.title) }),
+      el('p', { class: 'page-sub mono', text: item.id })),
+    el('div', { class: 'chips' },
+      el('button', { class: 'btn small', type: 'button',
+        onclick: () => copyLink(item.id) }, 'Copy link'),
+      el('button', { class: 'btn small primary', type: 'button',
+        onclick: () => (isStory ? editStoryForm(item) : editBugForm(item)) }, 'Edit'))));
+
+  if (isStory) wrap.append(lifecycleTrack(item.state, column));
+
+  const main = el('div', {});
+  if (isStory) {
+    if (isSet(item.story)) main.append(prose(item.story, 'p', { class: 'lede' }));
+    main.append(criteriaBlock(item));
+  } else {
+    for (const [label, value, note] of [
+      ['Symptom', item.symptom, ''],
+      ['Steps to reproduce', null, item.steps_confidence],
+      ['Expected', item.expected, ''],
+      ['Actual', item.actual, ''],
+      ['Assessment', item.assessment, item.assessment_confidence],
+    ]) {
+      if (label === 'Steps to reproduce') {
+        if (!item.steps.length) continue;
+        main.append(el('div', { class: 'detail-block' },
+          el('h4', { text: `${label}${note ? ` (${note})` : ''}` }),
+          el('ol', {}, item.steps.map((s) => prose(s, 'li')))));
+        continue;
+      }
+      if (!isSet(value)) continue;
+      main.append(el('div', { class: 'detail-block' },
+        el('h4', { text: `${label}${note ? ` (${note})` : ''}` }), prose(value)));
+    }
+  }
+  if (isSet(item.notes)) {
+    main.append(el('div', { class: 'detail-block' },
+      el('h4', { text: 'Notes' }), prose(item.notes)));
+  }
+  main.append(el('div', { class: 'detail-block' },
+    el('h4', { text: 'In the ledger' }),
+    sourceBlock(isStory ? 'User-Stories.md' : 'Bugs.md', item.span)));
+
+  const side = el('div', {});
+  side.append(moveCard(item, entity, column));
+  side.append(connectionsCard(item, entity));
+  if (isStory) side.append(dodCard());
+
+  wrap.append(el('div', { class: 'item-grid' }, main, side));
+  return wrap;
+}
+
+function criteriaBlock(story) {
+  if (story.criteria_met) {
+    return el('div', { class: 'detail-block' },
+      el('h4', { text: 'Acceptance criteria' }),
+      el('p', { text: 'All met ✓' }));
+  }
+  if (!story.criteria.length) {
+    return el('div', { class: 'detail-block' },
+      el('h4', { text: 'Acceptance criteria' }),
+      el('p', { class: 'hint', text: 'None written yet.' }));
+  }
+  return el('div', { class: 'detail-block' },
+    el('h4', { text: `Acceptance criteria · ${story.criteria.length}` }),
+    el('ul', { class: 'check-list' }, story.criteria.map((c) => {
+      const li = el('li', {}, checkBox(false));
+      const body = el('span', {});
+      // Given / When / Then read as keywords, so the shape of a criterion is
+      // visible before the words are.
+      const parts = String(c).split(/\b(given|when|then)\b/i);
+      for (const part of parts) {
+        if (/^(given|when|then)$/i.test(part)) {
+          body.append(el('span', { class: 'gwt', text: part.toUpperCase() }), ' ');
+        } else if (part.trim()) {
+          body.append(rich(part));
+        }
+      }
+      li.append(body);
+      return li;
+    })));
+}
+
+function checkBox(met) {
+  return svg('svg', { class: `check-box${met ? ' met' : ''}`, width: 14, height: 14,
+    viewBox: '0 0 14 14', 'aria-hidden': 'true' },
+    svg('rect', { x: 1.5, y: 1.5, width: 11, height: 11, rx: 3, fill: 'none',
+      stroke: 'currentColor', 'stroke-width': 1.4 }),
+    met ? svg('path', { d: 'M4.3 7.2 6.1 9 9.7 5.3', fill: 'none', stroke: 'currentColor',
+      'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }) : null);
+}
+
+function moveCard(item, entity, column) {
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Move it' }));
+  const row = el('div', { class: 'chips' });
+  const states = entity === 'story'
+    ? state.workspace.vocabulary.story_states
+    : state.workspace.vocabulary.bug_states.filter((s) => s !== 'Inbox');
+  for (const name of states) {
+    if (name === item.state) continue;
+    row.append(el('button', { class: 'btn small', type: 'button',
+      onclick: () => (entity === 'story'
+        ? changeStoryState(item, name)
+        : act('set_bug_state', { bug_id: item.id, state: name })) }, `→ ${name}`));
+  }
+  card.append(row);
+  if (column) {
+    card.append(el('h3', { style: 'margin-top:14px', text: 'Board' }));
+    const cols = el('div', { class: 'chips' });
+    for (const c of state.workspace.vocabulary.board_columns) {
+      if (c === column) continue;
+      cols.append(el('button', { class: 'btn small', type: 'button',
+        onclick: () => moveItem(item.id, c) }, c));
+    }
+    card.append(cols);
+  }
+  card.append(el('h3', { style: 'margin-top:14px', text: 'Branch' }));
+  card.append(el('div', { class: 'chips' },
+    el('code', { text: branchFor(item, true) }),
+    el('button', { class: 'btn small ghost', type: 'button',
+      onclick: () => branchFor(item) }, 'Copy')));
+  return card;
+}
+
+/** One hop out: the epic above, what it needs, what needs it, bugs about it. */
+function connectionsCard(item, entity) {
+  const repo = state.repo;
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Connections' }));
+  const conn = el('div', { class: 'conn' });
+  const stories = Object.fromEntries(repo.stories.map((s) => [s.id, s]));
+
+  const group = (label, ids, decorate) => {
+    if (!ids.length) return;
+    const box = el('div', {});
+    box.append(el('div', { class: 'conn-group', text: label }));
+    const row = el('div', { class: 'conn-row' });
+    for (const id of ids) {
+      row.append(el('button', { class: 'idlink', type: 'button',
+        onclick: () => openItemPage(id) }, id));
+      const note = decorate && decorate(id);
+      if (note) row.append(note);
+    }
+    box.append(row);
+    conn.append(box);
+  };
+
+  if (item.parent) group('Epic', [item.parent]);
+  if (entity === 'story') {
+    group('Needs', item.dependencies || [], (id) => {
+      const dep = stories[id];
+      if (!dep) return null;
+      const met = dep.state === 'Delivered';
+      return el('span', { class: `dep ${met ? 'dep-met' : ''}`,
+        text: met ? '✓' : dep.state });
+    });
+    const neededBy = repo.stories
+      .filter((s) => (s.dependencies || []).includes(item.id)).map((s) => s.id);
+    group('Needed by', neededBy);
+    group('Bugs', repo.bugs.filter((b) => b.relates_to === item.id).map((b) => b.id));
+  } else if (item.relates_to) {
+    group('Relates to', [item.relates_to]);
+  }
+  if (!conn.children.length) conn.append(el('p', { class: 'hint', text: 'Nothing linked yet.' }));
+  card.append(conn);
+  return card;
+}
+
+function dodCard() {
+  const list = (state.repo.definitions && state.repo.definitions.definition_of_done) || [];
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Before Done' }));
+  if (!list.length) {
+    card.append(el('p', { class: 'hint', text: 'No Definition of Done in Definitions.md.' }));
+    return card;
+  }
+  card.append(el('ul', { class: 'check-list' },
+    list.map((line) => el('li', {}, checkBox(false), el('span', {}, rich(line))))));
+  return card;
+}
+
+function epicPage(epic) {
+  const wrap = el('div', {});
+  wrap.append(crumb(
+    el('button', { type: 'button', onclick: () => goTo('backlog') }, 'Backlog'),
+    el('span', { class: 'mono', text: epic.id })));
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('div', { class: 'chips', style: 'margin-bottom:8px' },
+        stateChip('epic', epic.state),
+        isSet(epic.target) ? badge(`target ${epic.target}`) : null,
+        isSet(epic.area) ? badge(epic.area) : null),
+      el('h1', { class: 'page-title', text: show(epic.title) }),
+      el('p', { class: 'page-sub mono', text: epic.id })),
+    el('button', { class: 'btn small', type: 'button',
+      onclick: () => copyLink(epic.id) }, 'Copy link')));
+
+  const main = el('div', {});
+  if (isSet(epic.goal)) main.append(prose(epic.goal, 'p', { class: 'lede' }));
+  main.append(el('div', { class: 'detail-block', style: 'margin-top:16px' },
+    el('h4', { text: `Stories · ${(epic.stories || []).length}` }),
+    el('div', { class: 'stack' }, (epic.stories || []).map((i) =>
+      el('div', { class: 'item' },
+        stateChip('story', indexState(i.state), { column: boardColumn(i.id) }),
+        el('button', { class: 'idlink', type: 'button',
+          onclick: () => openItemPage(i.id) }, i.id),
+        el('div', { class: 'grow', text: show(i.title) }),
+        isSet(i.points) ? badge(`${i.points} pts`) : null)))));
+  if ((epic.history || []).length) {
+    main.append(el('div', { class: 'detail-block' },
+      el('h4', { text: 'History' }),
+      el('ul', {}, epic.history.map((h) => prose(h, 'li')))));
+  }
+  main.append(el('div', { class: 'detail-block' },
+    el('h4', { text: 'In the ledger' }), sourceBlock('Epic-Backlog.md', epic.span)));
+
+  const side = el('div', {});
+  const roll = epic.rollup || {};
+  side.append(el('div', { class: 'side-card' },
+    el('h3', { text: 'Progress' }),
+    el('div', { class: 'hint', style: 'margin-bottom:3px', text: 'Stories' }),
+    meter(roll.stories_done || 0, roll.stories_total || 0),
+    el('div', { class: 'hint', style: 'margin:10px 0 3px', text: 'Points' }),
+    meter(roll.points_done || 0, roll.points_total || 0)));
+  wrap.append(el('div', { class: 'item-grid' }, main, side));
+  return wrap;
+}
+
+function draftPage(draft) {
+  const wrap = el('div', {});
+  wrap.append(crumb(
+    el('button', { type: 'button', onclick: () => goTo('backlog') }, 'Backlog'),
+    el('button', { type: 'button',
+      onclick: () => openItemPage(draft.epic.id) }, draft.epic.id),
+    el('span', { class: 'mono', text: draft.id })));
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('div', { class: 'chips', style: 'margin-bottom:8px' },
+        stateChip('story', 'Draft'), priorityMark(draft.priority)),
+      el('h1', { class: 'page-title', text: show(draft.title) }),
+      el('p', { class: 'page-sub mono', text: draft.id })),
+    el('button', { class: 'btn primary', type: 'button',
+      onclick: () => detailStoryForm(draft, draft.epic) }, 'Write it up')));
+  wrap.append(lifecycleTrack('Draft', ''));
+  wrap.append(el('p', { class: 'page-sub' },
+    'A Draft lives only as an index line under its epic — there is no detail entry yet. '
+    + 'Writing it up moves it to Ready.'));
+  return wrap;
+}
+
+/* --------------------------------------------------------------- palette */
+
+let paletteIndex = 0;
+let paletteRows = [];
+
+function openPalette() {
+  const box = document.getElementById('palette');
+  const input = document.getElementById('palette-q');
+  box.hidden = false;
+  box.setAttribute('aria-hidden', 'false');
+  input.value = '';
+  drawPalette('');
+  setTimeout(() => input.focus(), 20);
+}
+
+function closePalette() {
+  const box = document.getElementById('palette');
+  box.hidden = true;
+  box.setAttribute('aria-hidden', 'true');
+}
+
+function paletteCandidates(query) {
+  const q = query.trim().toLowerCase();
+  const repo = state.repo;
+  const rows = [];
+  if (repo) {
+    const seen = new Set();
+    const push = (entity, item, extra) => {
+      if (seen.has(item.id)) return;
+      seen.add(item.id);
+      rows.push({ group: 'Items', id: item.id, label: show(item.title),
+        entity, state: item.state, column: boardColumn(item.id), ...extra });
+    };
+    for (const s of repo.stories) push('story', s);
+    for (const b of repo.bugs) push('bug', b);
+    for (const e of repo.epics) {
+      push('epic', e);
+      for (const i of e.stories || []) {
+        push('story', { id: i.id, title: i.title, state: indexState(i.state) });
+      }
+    }
+  }
+  const sheet = state.commands;
+  if (sheet) {
+    for (const group of sheet.groups) {
+      for (const c of group.commands) {
+        rows.push({ group: c.action || c.view ? 'Do it here' : 'In Claude Code',
+          id: '/' + c.name, label: c.description || '', command: c });
+      }
+    }
+  }
+  if (!q) {
+    return rows.filter((r) => r.group === 'Items').slice(0, 8)
+      .concat(rows.filter((r) => r.group === 'Do it here').slice(0, 6));
+  }
+  const score = (r) => {
+    const id = r.id.toLowerCase();
+    const label = String(r.label).toLowerCase();
+    if (id.startsWith(q) || id.replace('/', '').startsWith(q)) return 0;
+    if (id.includes(q)) return 1;
+    if (label.startsWith(q)) return 2;
+    if (label.includes(q)) return 3;
+    return 99;
+  };
+  return rows.map((r) => ({ r, s: score(r) })).filter((x) => x.s < 99)
+    .sort((a, b) => a.s - b.s).slice(0, 30).map((x) => x.r);
+}
+
+function highlight(text, query) {
+  const node = el('span', {});
+  const q = query.trim();
+  if (!q) { node.textContent = text; return node; }
+  const at = String(text).toLowerCase().indexOf(q.toLowerCase());
+  if (at < 0) { node.textContent = text; return node; }
+  node.append(document.createTextNode(String(text).slice(0, at)));
+  node.append(el('mark', { text: String(text).substr(at, q.length) }));
+  node.append(document.createTextNode(String(text).slice(at + q.length)));
+  return node;
+}
+
+function drawPalette(query) {
+  const host = document.getElementById('palette-results');
+  paletteRows = paletteCandidates(query);
+  paletteIndex = 0;
+  host.replaceChildren();
+  let group = null;
+  paletteRows.forEach((row, i) => {
+    if (row.group !== group) {
+      group = row.group;
+      host.append(el('div', { class: 'grp', text: group }));
+    }
+    const node = el('button', { class: 'opt', type: 'button', role: 'option',
+      'aria-selected': String(i === 0), dataset: { index: String(i) },
+      onclick: (e) => runPaletteRow(row, e.shiftKey) },
+      el('span', { class: 'opt-id' }, highlight(row.id, query)),
+      el('span', { class: 'opt-main' }, highlight(row.label, query)));
+    if (row.entity) {
+      node.append(el('span', { class: 'opt-tail' },
+        stateChip(row.entity, row.state, { column: row.column })));
+    }
+    host.append(node);
+  });
+  if (!paletteRows.length) {
+    host.append(el('p', { class: 'empty', style: 'margin:14px', text: 'Nothing matches.' }));
+  }
+}
+
+function movePalette(delta) {
+  const options = [...document.getElementById('palette-results').querySelectorAll('.opt')];
+  if (!options.length) return;
+  paletteIndex = (paletteIndex + delta + options.length) % options.length;
+  options.forEach((o, i) => o.setAttribute('aria-selected', String(i === paletteIndex)));
+  options[paletteIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function runPaletteRow(row, peek) {
+  closePalette();
+  if (row.entity) {
+    if (peek) openItem(row.id);
+    else openItemPage(row.id);
+    return;
+  }
+  const c = row.command;
+  if (!c) return;
+  const run = HERE_ACTIONS[c.action];
+  if (run) return run();
+  const view = c.view || ACTION_VIEW[c.action];
+  if (view) return goTo(view);
+  copyCommand(`/${c.name}${c.args ? ' ' + c.args : ''}`);
+}
+
+/* ---------------------------------------------------------------- render */
 
 /* A folder relocated from a pre-2.0 ledger is missing files this page reads.
  * Say that plainly and persistently — an empty backlog with no explanation
@@ -1520,110 +2268,198 @@ function layoutBanner() {
 }
 
 function render() {
-  renderTabs();
+  if (!state.route) state.route = parseHash();
+  renderRail();
+  renderTrust();
   renderPeople();
-  const view = document.getElementById('view');
-  if (!state.repo) {
-    view.replaceChildren(el('p', { class: 'empty', text: 'No project selected.' }));
+  renderProject();
+
+  const host = document.getElementById('main');
+  const name = state.route.name;
+  const dest = ALL_DESTINATIONS.find((d) => d.route === name);
+  const viewName = name === 'item' ? 'item' : name === 'notfound' ? 'notfound'
+    : (dest ? dest.view : 'today');
+
+  document.title = (name === 'item' ? state.route.id
+    : dest ? dest.label : 'Not found') + ' · Agile Ledger Pro';
+
+  if (!state.repo && name !== 'notfound') {
+    host.replaceChildren(el('p', { class: 'empty', text: 'No project selected.' }));
     return;
   }
   try {
-    const panel = (VIEWS[state.tab] || VIEWS.overview)();
-    view.replaceChildren(...[layoutBanner(), panel].filter(Boolean));
+    const panel = (VIEWS[viewName] || VIEWS.today)();
+    host.replaceChildren(...[layoutBanner(), panel].filter(Boolean));
   } catch (error) {
-    view.replaceChildren(el('p', { class: 'empty', text: `Could not render this view: ${error.message}` }));
+    host.replaceChildren(el('p', { class: 'empty',
+      text: `Could not render this view: ${error.message}` }));
     throw error;
   }
 }
 
+function renderProject() {
+  const name = document.getElementById('proj-name');
+  const sub = document.getElementById('proj-sub');
+  if (!name || !state.workspace) return;
+  name.textContent = state.slug || '—';
+  const git = state.workspace.git;
+  const placement = state.repo && state.repo.placement === 'in-repo' ? 'in repo' : 'ledger repo';
+  sub.textContent = git && git.git ? `${placement} · ${git.branch}` : placement;
+}
+
+function renderPeople() {
+  const picker = document.getElementById('person-picker');
+  const repo = state.repo;
+  if (!picker) return;
+  const people = new Set();
+  if (repo) {
+    for (const s of repo.stories) if (isSet(s.assignee)) people.add(nameOf(s.assignee));
+    for (const b of repo.bugs) if (isSet(b.assignee)) people.add(nameOf(b.assignee));
+    const me = repo.definitions.config && repo.definitions.config.Me;
+    if (me) people.add(me);
+  }
+  const previous = state.person;
+  picker.replaceChildren(
+    el('option', { value: '', text: 'Everyone' }),
+    ...[...people].sort().map((p) => el('option', { value: p, text: p })));
+  picker.value = previous;
+  if (picker.value !== previous) state.person = picker.value;
+
+  const label = document.getElementById('who-name');
+  const initial = document.getElementById('who-initial');
+  if (label) label.textContent = state.person || 'Everyone';
+  if (initial) initial.textContent = (state.person || '·').charAt(0).toUpperCase();
+}
+
+/* ------------------------------------------------------------- lifecycle */
+
 async function loadRepo(slug) {
   state.slug = slug;
-  localStorage.setItem('agile-ledger-pro.repo', slug);
+  remember('repo', slug);
   state.repo = await api(`/api/repo/${encodeURIComponent(slug)}`);
   state.revision = state.repo.revision;
+  state.syncedAt = Date.now();
   render();
 }
 
 async function refreshWorkspaceQuietly() {
-  try { state.workspace = await api('/api/workspace'); } catch { /* keep the old copy */ }
+  try { state.workspace = await api('/api/workspace'); renderTrust(); } catch { /* keep */ }
 }
 
-/* Claude edits the same files from the terminal, so poll the folder's mtime and
- * pull a fresh copy when something changed underneath us. */
+/* Claude edits the same files from the terminal. A revision bump that did not
+ * follow one of our own writes is an external edit: pulse the trust line
+ * rather than toast, so the page stays quiet while someone else works. */
 async function poll() {
   if (!state.slug || document.hidden) return;
   try {
     const { revision } = await api(`/api/repo/${encodeURIComponent(state.slug)}/revision`);
+    state.syncedAt = Date.now();
     if (revision && revision !== state.revision) {
+      const ours = state.pendingOwnWrite;
+      state.pendingOwnWrite = false;
       state.repo = await api(`/api/repo/${encodeURIComponent(state.slug)}`);
       state.revision = state.repo.revision;
+      state.externalEdit = !ours;
       render();
-      toast('ok', 'Ledger reloaded', 'The files changed on disk.');
+    } else {
+      renderTrust();
     }
   } catch { /* the server may be stopping; try again next tick */ }
 }
 
 function applyTheme(mode) {
   document.documentElement.setAttribute('data-theme', mode);
-  localStorage.setItem('agile-ledger-pro.theme', mode);
+  remember('theme', mode);
+  for (const b of document.querySelectorAll('[data-theme-set]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.themeSet === mode));
+  }
+}
+
+/** localStorage, wrapped: a blocked or private store must not break the page. */
+function remember(key, value) {
+  const full = 'agile-ledger-pro.' + key;
+  try {
+    if (value === undefined) return localStorage.getItem(full);
+    localStorage.setItem(full, value);
+  } catch { /* private window, blocked storage — carry on without it */ }
+  return value;
 }
 
 async function boot() {
-  applyTheme(localStorage.getItem('agile-ledger-pro.theme') || 'auto');
-  document.getElementById('theme-btn').addEventListener('click', () => {
-    const order = ['auto', 'light', 'dark'];
-    const now = document.documentElement.getAttribute('data-theme') || 'auto';
-    applyTheme(order[(order.indexOf(now) + 1) % order.length]);
-  });
-  document.getElementById('commit-btn').addEventListener('click', commitForm);
-  // No hash routing until Phase 2 — the mark just returns to the first view.
-  const brand = document.getElementById('brand');
-  if (brand) brand.addEventListener('click', () => goTo('overview'));
-
-  for (const node of document.querySelectorAll('[data-close]')) {
-    node.addEventListener('click', () => { closeModal(); closeDrawer(); });
+  applyTheme(remember('theme') || 'auto');
+  for (const b of document.querySelectorAll('[data-theme-set]')) {
+    b.addEventListener('click', () => applyTheme(b.dataset.themeSet));
   }
+  for (const node of document.querySelectorAll('[data-close]')) {
+    node.addEventListener('click', () => { closeModal(); closeDrawer(); closePalette(); });
+  }
+
+  const projBtn = document.getElementById('proj');
+  const picker = document.getElementById('repo-picker');
+  if (projBtn && picker) projBtn.addEventListener('click', () => picker.focus());
+  const whoBtn = document.getElementById('who');
+  const person = document.getElementById('person-picker');
+  if (whoBtn && person) whoBtn.addEventListener('click', () => person.focus());
+
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') { closeModal(); closeDrawer(); }
+    const palette = document.getElementById('palette');
+    const open = !palette.hidden;
+    if ((event.key === 'k' || event.key === 'K') && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      open ? closePalette() : openPalette();
+      return;
+    }
+    if (event.key === 'Escape') { closeModal(); closeDrawer(); closePalette(); return; }
+    if (!open) return;
+    if (event.key === 'ArrowDown') { event.preventDefault(); movePalette(1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); movePalette(-1); }
+    else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (paletteRows[paletteIndex]) runPaletteRow(paletteRows[paletteIndex], event.shiftKey);
+    }
   });
+  const q = document.getElementById('palette-q');
+  if (q) q.addEventListener('input', () => drawPalette(q.value));
+
+  const drawerOpen = document.getElementById('drawer-open');
+  if (drawerOpen) {
+    drawerOpen.addEventListener('click', () => {
+      const id = document.getElementById('drawer-title').textContent;
+      closeDrawer();
+      if (id) openItemPage(id);
+    });
+  }
 
   try {
     state.workspace = await api('/api/workspace');
   } catch (error) {
-    document.getElementById('view').replaceChildren(
+    document.getElementById('main').replaceChildren(
       el('p', { class: 'empty', text: `Could not reach the ledger: ${error.message}` }));
     return;
   }
 
-  const path = document.getElementById('ledger-path');
-  path.textContent = state.workspace.root;
-  path.title = state.workspace.root;
-
   const present = state.workspace.repos.filter((r) => r.present);
-  const picker = document.getElementById('repo-picker');
   picker.replaceChildren(...present.map((r) => el('option', { value: r.slug, text: r.slug })));
   picker.addEventListener('change', () => loadRepo(picker.value));
+  if (person) {
+    person.addEventListener('change', (event) => { state.person = event.target.value; render(); });
+  }
 
   if (!present.length) {
-    document.getElementById('view').replaceChildren(el('p', { class: 'empty',
+    document.getElementById('main').replaceChildren(el('p', { class: 'empty',
       text: 'This ledger has no repo folders yet. Run /register-repo in Claude Code.' }));
     return;
   }
 
-  const remembered = localStorage.getItem('agile-ledger-pro.repo');
+  const remembered = remember('repo');
   const preferred = state.workspace.config.default_repo;
   const slug = present.some((r) => r.slug === remembered) ? remembered
     : present.some((r) => r.slug === preferred) ? preferred
     : present[0].slug;
   picker.value = slug;
 
-  const hash = location.hash.replace('#', '');
-  if (TABS.some(([id]) => id === hash)) state.tab = hash;
-
-  document.getElementById('person-picker').addEventListener('change', (event) => {
-    state.person = event.target.value;
-    render();
-  });
+  state.route = parseHash();
+  window.addEventListener('hashchange', onRoute);
 
   await loadRepo(slug);
   loadCommands();
