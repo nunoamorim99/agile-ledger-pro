@@ -25,9 +25,10 @@
 > [Agile-Ledger](https://github.com/nunoamorim99/agile-ledger) — same plain-Markdown ledger format, same
 > 34 commands, shipped as the `agile-ledger-pro` plugin. The ledger on disk is **unchanged**: the folder
 > is still `agile-ledger/` and the root marker is still a `Registry.md` opening with
-> `# Agile-Ledger Registry`, so Pro reads and writes an existing Agile-Ledger ledger with nothing to
-> migrate. Switching is an install, not a conversion — see [Install](#install) if you already have the
-> original marketplace added.
+> `# Agile-Ledger Registry`, so Pro reads and writes an existing **Agile-Ledger 2.0** ledger with
+> nothing to migrate. Switching is an install, not a conversion — see [Install](#install) if you
+> already have the original marketplace added. On a **pre-2.0** ledger, `/migrate-ledger` moves it in
+> and converts the older file layout.
 
 ---
 
@@ -92,7 +93,9 @@ Run `/init-ledger` once, then `/register-repo` for each project. From inside a c
 up to the sibling ledger and matches the repo by its git remote, so there is nothing to configure and
 nothing to commit into the codebase. Every command also takes `--repo <slug>` to act on another project
 from anywhere. Already running the pre-2.0 layout? `/migrate-ledger` moves an in-repo `Agile-Ledger/`
-folder across verbatim and then offers to clean the code repo on a branch.
+folder into the ledger repo and then offers to clean the code repo on a branch. If that ledger also
+predates the eight files — a `Backlog.md` rather than `Ideas.md` + `Epic-Backlog.md` +
+`User-Stories.md` + `Bugs.md` — it converts the layout as well, relocating text without rewriting it.
 
 ## The eight files it manages (per repo)
 

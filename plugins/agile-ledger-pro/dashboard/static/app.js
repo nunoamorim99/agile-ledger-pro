@@ -1170,6 +1170,21 @@ function renderPeople() {
   if (picker.value !== previous) state.person = picker.value;
 }
 
+/* A folder relocated from a pre-2.0 ledger is missing files this page reads.
+ * Say that plainly and persistently — an empty backlog with no explanation
+ * looks like data loss. */
+function layoutBanner() {
+  const layout = state.repo && state.repo.layout;
+  if (!layout || !layout.message) return null;
+  const legacy = layout.legacy;
+  return el('div', { class: `notice${legacy ? ' critical' : ''}`, role: 'status' },
+    el('strong', { text: legacy ? `Pre-2.0 ledger (${layout.era})` : 'Incomplete ledger folder' }),
+    el('p', { text: layout.message }),
+    layout.detail ? el('p', { class: 'hint', text: layout.detail }) : null,
+    legacy ? el('button', { class: 'btn small', type: 'button',
+      onclick: () => copyCommand('/migrate-ledger') }, 'Copy /migrate-ledger') : null);
+}
+
 function render() {
   renderTabs();
   renderPeople();
@@ -1178,11 +1193,9 @@ function render() {
     view.replaceChildren(el('p', { class: 'empty', text: 'No project selected.' }));
     return;
   }
-  if (state.repo.missing_files && state.repo.missing_files.length) {
-    toast('warn', 'Missing ledger files', state.repo.missing_files.join(', '));
-  }
   try {
-    view.replaceChildren((VIEWS[state.tab] || VIEWS.overview)());
+    const panel = (VIEWS[state.tab] || VIEWS.overview)();
+    view.replaceChildren(...[layoutBanner(), panel].filter(Boolean));
   } catch (error) {
     view.replaceChildren(el('p', { class: 'empty', text: `Could not render this view: ${error.message}` }));
     throw error;

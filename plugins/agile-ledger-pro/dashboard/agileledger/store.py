@@ -17,7 +17,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from . import mdutil, parse, render
+from . import mdutil, parse, render, resolve
 from .mdutil import split_lines
 from .model import LEDGER_FILES, EMPTY, id_rank
 
@@ -142,6 +142,7 @@ class Repo:
             "definitions": definitions,
             "next_ids": self.next_ids(),
             "missing_files": [n for n, f in self.files.items() if not f.exists],
+            "layout": resolve.detect_layout(self.path),
             "stats": self._stats(stories, bugs, epics, sprint),
         }
 

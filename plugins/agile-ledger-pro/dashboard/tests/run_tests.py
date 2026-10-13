@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from agileledger import actions, mdutil, parse, render, resolve  # noqa: E402
-from agileledger.model import BUG_STATES, STORY_STATES  # noqa: E402
+from agileledger.model import BUG_STATES, LEDGER_FILES, STORY_STATES  # noqa: E402
 from agileledger.store import Repo  # noqa: E402
 
 FIXTURE = HERE / "fixture"
@@ -412,6 +412,83 @@ def test_markdown_helpers():
         ["| A | B |", "|---|---|", "| 1 | 2 |"], 0, 3)
     equal(headers, ["A", "B"], "table headers")
     equal(rows, [["1", "2"]], "table rows")
+
+
+def test_detects_a_pre_2_0_layout():
+    """A relocated pre-2.0 folder must be reported, not rendered as empty.
+
+    The ledger's file layout changed during v1, so `/migrate-ledger` moving a
+    folder across verbatim can leave one the skill cannot read. Showing an
+    empty backlog with no explanation would look like data loss.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="agile-ledger-era-"))
+    try:
+        eras = {
+            "v1.0 – v1.1": ["Backlog.md", "Sprint.md"],
+            "v1.2": ["Backlog.md", "User-Stories.md"],
+            "v1.3": ["Backlog.md", "User-Stories.md", "Bugs.md"],
+            "pre-v1.4": ["Backlog.md", "User-Stories.md", "Bugs.md", "Ideas.md"],
+        }
+        for expected, files in eras.items():
+            folder = tmp / expected.replace(" ", "_").replace("–", "-")
+            folder.mkdir(parents=True)
+            for name in files:
+                (folder / name).write_text("placeholder\n", encoding="utf-8")
+            layout = resolve.detect_layout(folder)
+            equal(layout["era"], expected, f"{files} is detected as {expected}")
+            check(layout["legacy"], f"{expected} is flagged legacy")
+            check("/migrate-ledger" in layout["message"],
+                  f"{expected} points the user at /migrate-ledger")
+
+        complete = tmp / "current"
+        complete.mkdir()
+        for name in LEDGER_FILES:
+            (complete / name).write_text("placeholder\n", encoding="utf-8")
+        layout = resolve.detect_layout(complete)
+        equal(layout["era"], "current", "a full set of the eight files is current")
+        check(not layout["legacy"], "a current folder is not flagged legacy")
+        equal(layout["message"], "", "a current folder shows no banner")
+
+        partial = tmp / "partial"
+        partial.mkdir()
+        for name in LEDGER_FILES[:5]:
+            (partial / name).write_text("placeholder\n", encoding="utf-8")
+        layout = resolve.detect_layout(partial)
+        check(not layout["legacy"], "a merely incomplete folder is not called pre-2.0")
+        check("Releases.md" in layout["message"], "the missing files are named")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_fixture_repo_is_current():
+    with Ledger() as led:
+        snapshot = led.repo().snapshot()
+        equal(snapshot["layout"]["era"], "current", "the fixture uses the current layout")
+        equal(snapshot["layout"]["message"], "", "and raises no banner")
+
+
+def test_commands_contain_no_rebrand_damage():
+    """The Pro rebrand must not have rewritten a path or a shell command.
+
+    `git rm -r Agile-Ledger` became `git rm -r Agile-Ledger Pro` in
+    migrate-ledger.md, which would have deleted nothing and errored. These
+    strings are the ledger's own vocabulary and must survive verbatim.
+    """
+    plugin = HERE.parent.parent
+    for folder in (plugin / "commands", plugin / "skills"):
+        if not folder.is_dir():
+            continue
+        for path in folder.rglob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            where = path.relative_to(plugin).as_posix()
+            check("Agile-Ledger Pro/" not in text,
+                  f"{where}: no 'Agile-Ledger Pro/' path")
+            check("rm -r Agile-Ledger Pro" not in text,
+                  f"{where}: the git rm target is the real folder name")
+            check("# Agile-Ledger Pro Registry" not in text,
+                  f"{where}: the registry marker heading is unchanged")
+            check("agile-ledger-pro-setup" not in text,
+                  f"{where}: the setup branch name is unchanged")
 
 
 def test_command_sheet_covers_every_shipped_command():

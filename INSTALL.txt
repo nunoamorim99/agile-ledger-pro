@@ -28,9 +28,14 @@ FIRST RUN
                       On a manual install, run it directly if /dashboard cannot find it:
                         python3 .claude/dashboard/serve.py
 
-  Already using Agile-Ledger? Pro reads the same ledger. The folder is still
+  Already using Agile-Ledger 2.0? Pro reads the same ledger. The folder is still
   agile-ledger/ and the root marker is still a Registry.md opening with
   "# Agile-Ledger Registry" — point Pro at it and carry on, nothing to migrate.
+
+  On a PRE-2.0 ledger (an Agile-Ledger/ folder inside a code repo), run
+  /migrate-ledger. It moves the folder into the ledger repo and, if the ledger
+  predates the eight files -- a Backlog.md rather than Ideas.md +
+  Epic-Backlog.md + User-Stories.md + Bugs.md -- converts the layout too.
 
 ---
 Prefer automatic updates? Install via the marketplace instead and you get new versions

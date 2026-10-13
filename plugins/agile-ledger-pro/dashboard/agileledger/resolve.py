@@ -133,6 +133,48 @@ def read_registry(root: Path) -> list[dict[str, str]]:
     return out
 
 
+def detect_layout(folder: Path) -> dict:
+    """Which era's file layout a repo folder uses.
+
+    The ledger's file layout changed during v1 — `Ideas.md` arrived in v1.4,
+    `Bugs.md` in v1.3, and the `Backlog.md` split in v1.2 — so a folder
+    relocated from an older ledger can be missing files the skill expects. A
+    dashboard that just rendered an empty backlog would be lying about why.
+    """
+    has = {name: (folder / name).is_file() for name in
+           ("Backlog.md", "Epic-Backlog.md", "User-Stories.md", "Ideas.md", "Bugs.md")}
+
+    if has["Backlog.md"] and not has["Epic-Backlog.md"]:
+        if not has["User-Stories.md"]:
+            era, detail = "v1.0 – v1.1", ("story detail is still nested inside Backlog.md, and "
+                                          "Ideas.md and Bugs.md do not exist yet")
+        elif not has["Bugs.md"]:
+            era, detail = "v1.2", "User-Stories.md was split out, but Bugs.md and Ideas.md do not exist yet"
+        elif not has["Ideas.md"]:
+            era, detail = "v1.3", "Bugs.md exists, but the idea inbox is still a section inside Backlog.md"
+        else:
+            era, detail = "pre-v1.4", "Backlog.md has not been renamed to Epic-Backlog.md yet"
+        return {
+            "era": era,
+            "legacy": True,
+            "detail": detail,
+            "message": (f"This folder uses the {era} file layout, so parts of it cannot be read here. "
+                        f"Run /migrate-ledger in Claude Code to convert it."),
+        }
+
+    from .model import LEDGER_FILES
+    missing = [n for n in LEDGER_FILES if not (folder / n).is_file()]
+    if missing:
+        return {
+            "era": "current",
+            "legacy": False,
+            "detail": "files missing from an otherwise current folder",
+            "message": ("Missing from this folder: " + ", ".join(missing)
+                        + ". /register-repo scaffolds the eight files."),
+        }
+    return {"era": "current", "legacy": False, "detail": "", "message": ""}
+
+
 def list_repos(root: Path) -> list[dict[str, str]]:
     """Every repo folder worth showing: Registry rows plus unregistered folders.
 
@@ -147,7 +189,8 @@ def list_repos(root: Path) -> list[dict[str, str]]:
     for child in sorted(p for p in root.iterdir() if p.is_dir()):
         if child.name.startswith(".") or child.name in known:
             continue
-        if (child / "Epic-Backlog.md").is_file() or (child / "Ideas.md").is_file():
+        if any((child / n).is_file() for n in
+               ("Epic-Backlog.md", "Ideas.md", "Backlog.md")):
             repos.append({
                 "slug": child.name,
                 "code_path": mdutil.EMPTY,

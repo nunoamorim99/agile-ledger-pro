@@ -115,18 +115,38 @@ Add one code repo to the ledger.
    into the code repo.**
 
 ### `/migrate-ledger [path]`
-Move a pre-2.0 in-repo ledger into the ledger repo. The upgrade path, and safe to run repeatedly.
+Move a pre-2.0 in-repo ledger into the ledger repo, **and reshape it if it predates the eight files**.
+The upgrade path, and safe to run repeatedly.
+
+v2.0 changed only where the ledger lives, but the **file layout changed during v1**: `Ideas.md` arrived
+in v1.4, `Bugs.md` in v1.3, and the `Backlog.md` → `Epic-Backlog.md` + `User-Stories.md` split in v1.2.
+So relocation alone is enough for a team already on v1.4+, and **not** enough for anyone earlier — a
+verbatim copy would leave a `Backlog.md` sitting where four files are expected, which the per-repo
+skill cannot read.
+
 1. Find the code repo's `Agile-Ledger/` folder (the cwd's repo by default, or `path`).
-2. Register the repo if it isn't yet, then **copy the files verbatim** into `<ledger-root>/<slug>/` —
+2. **Detect the era** from the files actually present, then confirm it against the content of
+   `Backlog.md` (full story entries under an epic, or one-line index entries?). State the era and the
+   per-file plan, and **wait for confirmation** before touching anything.
+3. Register the repo if it isn't yet, then **copy the files verbatim** into `<ledger-root>/<slug>/` —
    content is never rewritten, re-dated, or re-numbered; history is preserved as the team wrote it.
-3. If the target folder already has files, **stop and report the conflict** per file. Never merge two
+4. If the target folder already has files, **stop and report the conflict** per file. Never merge two
    ledgers silently; offer to keep the central copy, take the in-repo copy, or let the user resolve it.
-4. Commit the ledger repo (`ledger(<slug>): migrate ledger from the code repo`) — then **verify** the
-   files are present and committed.
-5. Only then **offer** to remove `Agile-Ledger/` from the code repo: create `setup_branch`, `git rm -r`
+5. **Convert, only when the era calls for it**, following `references/v1-migration.md`: lift the old
+   `## 📥 Inbox` into `Ideas.md`, split nested story detail out into `User-Stories.md` leaving a
+   one-line index entry on the epic, rename `Backlog.md` to `Epic-Backlog.md`, scaffold the files that
+   did not exist yet, rewrite pre-v1.5 headings to **bare IDs** so anchors work, and repoint the links
+   the rename invalidated. Conversion **relocates text and never rewrites it**, drops nothing (what
+   cannot be classified goes under `## ❓ Unsorted from migration`), and **invents nothing** — a
+   missing estimate, priority or severity stays `—`. Rebuild the overview tables afterwards; they are
+   derived.
+6. Commit the ledger repo (`ledger(<slug>): migrate ledger from the code repo`) — then **verify** the
+   files are present and committed, and run the `/ledger-check` audit over the result.
+7. Only then **offer** to remove `Agile-Ledger/` from the code repo: create `setup_branch`, `git rm -r`
    the folder, commit locally, and tell the user the branch is ready to push / PR. Never push, PR, or
    merge; if `git_execution` is `off`, just say which folder to delete and leave it untouched.
-6. Report what moved, what is pending, and the one-line new location.
+8. Report the era detected, what moved where with counts, every heading rewritten to a bare ID,
+   anything left unsorted, what `/ledger-check` still flags, and the one-line new location.
 
 ### `/discover-repos`
 Find repositories — the new-repo detector.
