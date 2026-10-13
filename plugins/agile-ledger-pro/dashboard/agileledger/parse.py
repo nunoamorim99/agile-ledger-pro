@@ -495,9 +495,20 @@ def parse_sprint(lines: list[str]) -> dict:
     blocked_span = mdutil.find_section(lines, 2, lambda t: "blocked" in t.lower())
     if blocked_span:
         for raw in bullets(lines, blocked_span[0] + 1, blocked_span[1]):
-            ids = re.findall(r"\b((?:US|BUG)-\d+)\b", strip_links(raw), re.IGNORECASE)
-            if ids:
-                blocked.append({"id": ids[0].upper(), "text": strip_links(raw)})
+            text = strip_links(raw)
+            m = re.match(r"^((?:US|BUG)-\d+)\b\s*(?:" + mdutil.DASH + r"\s*)?(.*)$",
+                         text, re.IGNORECASE)
+            if not m:
+                continue
+            parts = [p.strip() for p in m.group(2).split(mdutil.MIDDOT)]
+            blocked.append({
+                "id": m.group(1).upper(),
+                "title": parts[0] if parts else "",
+                # Everything after the title says why it is blocked, which is the
+                # part a reader actually needs. Keep it whole.
+                "reason": (" " + mdutil.MIDDOT + " ").join(p for p in parts[1:] if p),
+                "text": text,
+            })
 
     sync_log = []
     log_span = mdutil.find_section(lines, 2, lambda t: "sync log" in t.lower())
@@ -537,6 +548,23 @@ def _board_item(raw: str) -> dict | None:
 # Sprints-History.md
 # --------------------------------------------------------------------------
 
+_RANGE = re.compile(r"\s*(?:→|->|–|—|\bto\b)\s*")
+
+
+def _split_range(dates: str) -> tuple[str, str]:
+    """``2026-02-16 → 2026-02-27`` -> ``("2026-02-16", "2026-02-27")``.
+
+    Teams write the arrow several ways, so accept the usual ones. Anything that
+    does not split cleanly in two is kept whole as the start rather than guessed
+    at — a half-invented end date would be worse than an empty cell.
+    """
+    text = (dates or "").strip()
+    if not text or text == EMPTY:
+        return "", ""
+    parts = [p.strip() for p in _RANGE.split(text) if p.strip()]
+    return (parts[0], parts[1]) if len(parts) == 2 else (text, "")
+
+
 def parse_history(lines: list[str]) -> dict:
     velocity_line = mdutil.bold_field(lines, "Rolling velocity (last 3 sprints)")
     sprints = []
@@ -568,10 +596,13 @@ def parse_history(lines: list[str]) -> dict:
         if vm:
             velocity = vm.group(1)
 
+        start_date, end_date = _split_range(dates)
         sprints.append({
             "name": name,
             "title": goal_quote,
             "dates": dates,
+            "start": start_date,
+            "end": end_date,
             "goal": grab("Goal"),
             "committed": committed,
             "completed": completed,

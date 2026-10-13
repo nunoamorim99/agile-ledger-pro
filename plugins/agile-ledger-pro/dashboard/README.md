@@ -104,6 +104,16 @@ in `commands.SHEET`. It compares against the curated table rather than the rende
 purpose: the sheet files an unknown command under "Other", so checking the rendered output would
 pass no matter what.
 
+## Reading the ledger's own formatting
+
+Story sentences, goals, notes and bug assessments are Markdown, so the page renders their inline
+formatting — **bold**, *italic*, `code`, ~~struck~~ — instead of showing the asterisks, and an id
+written inside prose (`[US-014](User-Stories.md#us-014)`) becomes a button that opens that entry.
+Everything is built as DOM nodes, never `innerHTML`, because this is free text typed by people.
+
+There is no underline: Markdown has none, and inventing a syntax for it would render as literal
+punctuation in GitHub and VS Code preview, where the same ledger has to stay readable.
+
 ## Colour
 
 Charts follow the data-viz reference palette: one categorical slot (blue) for the single-series

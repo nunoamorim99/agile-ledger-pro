@@ -400,6 +400,41 @@ def test_writes_are_atomic_and_scoped():
               "no temp file is left behind")
 
 
+def test_sprint_dates_split_into_two_ends():
+    """The history table shows start and end as separate columns."""
+    for text, want in [
+        ("2026-02-16 → 2026-02-27", ("2026-02-16", "2026-02-27")),
+        ("2026-02-16 -> 2026-02-27", ("2026-02-16", "2026-02-27")),
+        ("2026-02-16 – 2026-02-27", ("2026-02-16", "2026-02-27")),
+        ("2026-02-16 to 2026-02-27", ("2026-02-16", "2026-02-27")),
+        ("2026-02-16", ("2026-02-16", "")),      # a lone date is never guessed at
+        ("", ("", "")),
+        ("—", ("", "")),
+    ]:
+        equal(parse._split_range(text), want, f"date range {text!r} splits correctly")
+
+    with Ledger() as led:
+        sprints = led.repo().history()["sprints"]
+        equal(sprints[0]["start"], "2026-02-16", "fixture sprint start")
+        equal(sprints[0]["end"], "2026-02-27", "fixture sprint end")
+
+
+def test_blocked_items_separate_title_and_reason():
+    """The board's blocked panel shows why, not one run-on line."""
+    with Ledger() as led:
+        led.run("set_blocked", item_id="US-002",
+                reason="waiting on the design review", blocked=True)
+        blocked = led.repo().sprint()["blocked"]
+        equal(len(blocked), 1, "one blocked entry")
+        equal(blocked[0]["id"], "US-002", "id parsed")
+        equal(blocked[0]["title"], "Google SSO login", "title parsed")
+        equal(blocked[0]["reason"], "waiting on the design review", "reason parsed")
+        check("US-002" not in blocked[0]["title"], "the title does not repeat the id")
+
+        led.run("set_blocked", item_id="US-002", blocked=False)
+        equal(led.repo().sprint()["blocked"], [], "unblocking clears the entry")
+
+
 def test_markdown_helpers():
     lines = ["# T", "<!-- hidden", "- not an idea", "-->", "- real"]
     mask = mdutil.comment_mask(lines)

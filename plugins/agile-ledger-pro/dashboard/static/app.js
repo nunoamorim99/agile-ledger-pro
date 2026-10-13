@@ -49,6 +49,95 @@ function nameOf(assignee) {
   return String(assignee || '').replace(/^@/, '').trim();
 }
 
+/* ------------------------------------------------- inline Markdown -------
+ * Ledger prose is Markdown, so render its formatting instead of showing the
+ * asterisks. Everything is built as DOM nodes — never innerHTML — because this
+ * is free text typed by people.
+ *
+ * Underline is deliberately absent: Markdown has no underline, and inventing a
+ * syntax for it would render as literal punctuation in GitHub and VS Code
+ * preview, where this ledger also has to stay readable.
+ */
+// Each delimiter pair closes on its own backreference, so the group numbers
+// here must match the alternation's own numbering: 1/2, 3/4, 5/6, then 7, 8,
+// and 9/10 for a link.
+const INLINE = new RegExp([
+  '(\\*\\*\\*|___)(?=\\S)([\\s\\S]*?\\S)\\1',   // 1,2  ***bold italic***
+  '(\\*\\*|__)(?=\\S)([\\s\\S]*?\\S)\\3',       // 3,4  **bold**
+  '(?<![A-Za-z0-9])(\\*|_)(?=\\S)([\\s\\S]*?\\S)\\5(?![A-Za-z0-9])', // 5,6 *italic*
+  '`([^`]+)`',                                  // 7    `code`
+  '~~(?=\\S)([\\s\\S]*?\\S)~~',                 // 8    ~~struck~~
+  '\\[([^\\]]+)\\]\\(([^)]*)\\)',               // 9,10 [text](target)
+].join('|'));
+
+/** Ledger text with its Markdown markers removed, for plain-text contexts. */
+function plain(text) {
+  return String(text ?? '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*\*|___|\*\*|__|~~)(.*?)\1/g, '$2')
+    .replace(/(?<![A-Za-z0-9])([*_])(\S(?:[\s\S]*?\S)?)\1(?![A-Za-z0-9])/g, '$2')
+    .replace(/`([^`]+)`/g, '$1');
+}
+
+const ID_TEXT = /^(US|EPIC|BUG|TASK)-\d+$/i;
+
+function rich(text) {
+  const frag = document.createDocumentFragment();
+  const lines = String(text ?? '').split('\n');
+  lines.forEach((line, i) => {
+    if (i) frag.append(el('br', {}));
+    inline(line, frag);
+  });
+  return frag;
+}
+
+function inline(text, parent) {
+  let rest = String(text ?? '');
+  while (rest) {
+    const m = INLINE.exec(rest);
+    if (!m) { parent.append(document.createTextNode(rest)); return; }
+    if (m.index) parent.append(document.createTextNode(rest.slice(0, m.index)));
+
+    let node;
+    if (m[2] !== undefined) { node = el('strong', {}); inline(m[2], node); node = wrapEm(node); }
+    else if (m[4] !== undefined) { node = el('strong', {}); inline(m[4], node); }
+    else if (m[6] !== undefined) { node = el('em', {}); inline(m[6], node); }
+    else if (m[7] !== undefined) { node = el('code', { text: m[7] }); }
+    else if (m[8] !== undefined) { node = el('del', {}); inline(m[8], node); }
+    else { node = linkNode(m[9], m[10]); }
+
+    parent.append(node);
+    rest = rest.slice(m.index + m[0].length);
+  }
+}
+
+function wrapEm(strongNode) {
+  const em = el('em', {});
+  em.append(strongNode);
+  return em;
+}
+
+/* A link to another ledger entry becomes a button that opens it here; the .md
+ * targets the ledger uses would 404 in a browser. Anything else stays text, so
+ * no ledger content can inject a URL into the page. */
+function linkNode(label, target) {
+  const id = ID_TEXT.test(label.trim()) ? label.trim().toUpperCase()
+    : (String(target || '').match(/#((?:us|epic|bug|task)-\d+)\s*$/i) || [])[1];
+  if (id) {
+    return el('button', { class: 'idlink', type: 'button', title: `Open ${id.toUpperCase()}`,
+      onclick: () => openItem(id.toUpperCase()) }, label);
+  }
+  return document.createTextNode(label);
+}
+
+/** A block of ledger prose, formatted. Falls back to the empty dash. */
+function prose(text, tag, attrs) {
+  const node = el(tag || 'p', attrs || {});
+  if (isSet(text)) node.append(rich(text));
+  else node.textContent = EMPTY;
+  return node;
+}
+
 async function api(path, options) {
   const response = await fetch(path, options);
   let payload;
@@ -163,7 +252,7 @@ const linesOf = (text) => String(text || '').split('\n').map((l) => l.trim()).fi
  * below is the table view for every other value. */
 function velocityChart(sprints) {
   const data = sprints.slice().reverse()
-    .map((s) => ({ name: s.name, value: num(s.velocity) }));
+    .map((s) => ({ sprint: s, name: s.name, value: num(s.velocity) }));
   if (!data.length) return el('p', { class: 'empty', text: 'No closed sprints yet.' });
 
   const W = 760, H = 210, padL = 34, padR = 12, padT = 16, padB = 34;
@@ -198,6 +287,17 @@ function velocityChart(sprints) {
     svg.append(tick);
   }
 
+  // Axis labels are the short sprint tag ("2026-S02" -> "S02"); the full name,
+  // dates and goal live in the tooltip. Long names side by side were unreadable.
+  const shortName = (name) => {
+    const text = String(name || '').trim();
+    const tail = text.split(/[-\s/]/).filter(Boolean).pop() || text;
+    return (tail.length <= 6 ? tail : tail.slice(-6)) || text;
+  };
+  // Still too tight? Label every Nth bar rather than overlap them.
+  const widest = Math.max(...data.map((d) => shortName(d.name).length), 1);
+  const every = Math.max(1, Math.ceil((widest * 6.6 + 8) / band));
+
   const best = Math.max(...data.map((d) => d.value));
   data.forEach((d, i) => {
     const x = padL + band * i + (band - barW) / 2;
@@ -208,16 +308,29 @@ function velocityChart(sprints) {
       rx: Math.min(4, barW / 2), class: 'bar' });
     const hit = make('rect', { x: padL + band * i, y: padT, width: band, height: plotH,
       class: 'bar-hit', tabindex: '0' });
+
+    const s = d.sprint || {};
     const tip = make('title', {});
-    tip.textContent = `${d.name}: ${d.value} points`;
+    tip.textContent = [
+      s.name || d.name,
+      isSet(s.title) ? `“${plain(s.title)}”` : '',
+      isSet(s.start) ? `${s.start}${isSet(s.end) ? ' → ' + s.end : ''}` : '',
+      `velocity ${d.value} pts`,
+      isSet(s.committed) ? `committed ${s.committed} pts` : '',
+      isSet(s.goal) ? `Goal: ${plain(s.goal)}` : '',
+    ].filter(Boolean).join('\n');
     hit.append(tip);
     // The hit area precedes its bar so the `.bar-hit:hover + .bar` rule lights it up.
     svg.append(hit, bar);
 
-    const label = make('text', { x: x + barW / 2, y: padT + plotH + 15,
-      'text-anchor': 'middle', class: 'cat' });
-    label.textContent = d.name;
-    svg.append(label);
+    // Label the newest bar always, then every Nth going back, so the most
+    // recent sprint is never the one that gets dropped.
+    if ((data.length - 1 - i) % every === 0) {
+      const label = make('text', { x: x + barW / 2, y: padT + plotH + 16,
+        'text-anchor': 'middle', class: 'cat' });
+      label.textContent = shortName(d.name);
+      svg.append(label);
+    }
 
     if (i === data.length - 1 || (d.value === best && best > 0)) {
       const value = make('text', { x: x + barW / 2, y: top - 6,
@@ -228,7 +341,9 @@ function velocityChart(sprints) {
   });
 
   return el('figure', { class: 'chart', style: 'margin:0' },
-    el('figcaption', { text: 'Completed story points per closed sprint, oldest first. Hover a bar for its value.' }),
+    el('figcaption', {
+      text: 'Completed story points per closed sprint, oldest first. '
+          + 'Hover a bar for its full name, dates and goal.' }),
     svg);
 }
 
@@ -301,7 +416,7 @@ VIEWS.overview = () => {
     wrap.append(el('section', { class: 'section' },
       sectionHead('Current sprint', `${show(sprint.name)} · ${show(sprint.dates)}`),
       el('div', { class: 'card' },
-        el('p', { style: 'margin:0 0 10px', text: show(sprint.goal) }),
+        prose(sprint.goal, 'p', { style: 'margin:0 0 10px' }),
         el('div', { class: 'chips' },
           state.workspace.vocabulary.board_columns.map((col) =>
             badge(`${col} ${sprint.board[col].length}`, col === 'Done' ? 'good' : ''))))));
@@ -367,16 +482,35 @@ VIEWS.board = () => {
 
   if (sprint.blocked.length) {
     wrap.append(el('section', { class: 'section', style: 'margin-top:18px' },
-      sectionHead('Blocked', 'a flag, not a column — the item keeps its place'),
+      sectionHead(`🚧 Blocked (${sprint.blocked.length})`,
+        'a flag, not a column — each item keeps its place on the board'),
       el('div', { class: 'stack' }, sprint.blocked.map((b) =>
-        el('div', { class: 'item' },
+        el('div', { class: 'blocked' },
           el('div', { class: 'grow' },
-            el('strong', { text: b.id }), ' ', el('span', { text: b.text })),
+            el('div', { class: 'blocked-head' },
+              el('button', { class: 'idlink', type: 'button',
+                onclick: () => openItem(b.id) }, b.id),
+              el('span', { class: 'blocked-title', text: show(b.title) })),
+            el('div', { class: 'blocked-why' },
+              el('span', { class: 'blocked-label', text: 'Blocked by' }),
+              prose(b.reason || b.text, 'span', { class: 'blocked-reason' }))),
           el('button', { class: 'btn small', type: 'button',
-            onclick: () => act('set_blocked', { item_id: b.id, blocked: false }, 'Unblocked') }, 'Unblock'))))));
+            onclick: () => act('set_blocked', { item_id: b.id, blocked: false }, 'Unblocked') },
+            'Unblock'))))));
   }
   return wrap;
 };
+
+/** Story / bug ids as small clickable chips, so a long list still wraps. */
+function idChips(ids) {
+  if (!ids || !ids.length) return document.createTextNode(EMPTY);
+  const wrap = el('span', { class: 'chips' });
+  for (const id of ids) {
+    wrap.append(el('button', { class: 'idlink', type: 'button',
+      onclick: () => openItem(id) }, id));
+  }
+  return wrap;
+}
 
 function ticket(item, column, blocked) {
   const node = el('div', { class: 'ticket', draggable: 'true', dataset: { id: item.id } },
@@ -414,7 +548,7 @@ VIEWS.ideas = () => {
     wrap.append(el('div', { class: 'stack' }, repo.ideas.map((idea) =>
       el('div', { class: 'item' },
         el('span', { class: 'when', text: show(idea.date) }),
-        el('div', { class: 'grow', text: idea.text }),
+        prose(idea.text, 'div', { class: 'grow' }),
         el('div', { class: 'item-actions' },
           el('button', { class: 'btn small', type: 'button', onclick: () => triageToEpicForm(idea) }, '→ Epic'),
           el('button', { class: 'btn small', type: 'button', onclick: () => triageToStoryForm(idea) }, '→ Story'),
@@ -428,7 +562,7 @@ VIEWS.ideas = () => {
       ? el('div', { class: 'stack' }, repo.bug_inbox.map((bug) =>
           el('div', { class: 'item' },
             el('span', { class: 'when', text: show(bug.date) }),
-            el('div', { class: 'grow', text: bug.text }),
+            prose(bug.text, 'div', { class: 'grow' }),
             el('button', { class: 'btn small', type: 'button', onclick: () => triageBugForm(bug) }, 'Triage'))))
       : el('p', { class: 'empty', text: 'No untriaged bug reports.' })));
   return wrap;
@@ -452,7 +586,7 @@ VIEWS.epics = () => {
             isSet(epic.target) ? badge(`target ${epic.target}`) : null,
             isSet(epic.area) ? badge(epic.area) : null),
           el('h3', { style: 'margin-top:6px', text: show(epic.title) }),
-          isSet(epic.goal) ? el('p', { class: 'goal', text: epic.goal }) : null),
+          isSet(epic.goal) ? prose(epic.goal, 'p', { class: 'goal' }) : null),
         el('div', { class: 'progress' },
           el('div', { class: 'hint', style: 'margin-bottom:3px', text: 'Stories' }),
           meter(roll.stories_done, roll.stories_total),
@@ -483,7 +617,7 @@ VIEWS.epics = () => {
     if (epic.history && epic.history.length) {
       card.append(el('div', { class: 'detail-block', style: 'margin-top:12px' },
         el('h4', { text: 'History' }),
-        el('ul', {}, epic.history.map((h) => el('li', { text: h })))));
+        el('ul', {}, epic.history.map((h) => prose(h, 'li')))));
     }
     wrap.append(card);
   }
@@ -572,20 +706,25 @@ VIEWS.sprints = () => {
 
   if (repo.history.sprints.length) {
     wrap.append(el('section', { class: 'section', style: 'margin-top:18px' },
-      el('table', { class: 'grid' },
+      el('table', { class: 'grid sprints' },
         el('thead', {}, el('tr', {},
-          ['Sprint', 'Dates', 'Goal', 'Committed', 'Completed', 'Velocity', 'Delivered', 'Carried over']
-            .map((h) => el('th', { text: h })))),
+          [['Sprint', ''], ['Start', 'date'], ['End', 'date'], ['Goal', 'wide'],
+           ['Committed', 'num'], ['Completed', 'num'], ['Velocity', 'num'],
+           ['Delivered', 'ids'], ['Carried over', 'ids']]
+            .map(([h, cls]) => el('th', { class: cls, text: h })))),
         el('tbody', {}, repo.history.sprints.map((s) =>
           el('tr', {},
-            el('td', { class: 'id', text: show(s.name) }),
-            el('td', { text: show(s.dates) }),
-            el('td', { text: show(s.goal) }),
+            el('td', { class: 'id' },
+              el('strong', { text: show(s.name) }),
+              isSet(s.title) ? el('div', { class: 'hint', text: s.title }) : null),
+            el('td', { class: 'date', text: show(s.start) }),
+            el('td', { class: 'date', text: show(s.end) }),
+            prose(s.goal, 'td', { class: 'wide' }),
             el('td', { class: 'num', text: show(s.committed) }),
             el('td', { class: 'num', text: show(s.completed) }),
-            el('td', { class: 'num', text: show(s.velocity) }),
-            el('td', { class: 'id', text: s.delivered.join(', ') || EMPTY }),
-            el('td', { class: 'id', text: s.carried.join(', ') || EMPTY })))))));
+            el('td', { class: 'num strong', text: show(s.velocity) }),
+            el('td', { class: 'ids' }, idChips(s.delivered)),
+            el('td', { class: 'ids' }, idChips(s.carried))))))));
   } else {
     wrap.append(el('p', { class: 'empty', text: 'No sprints closed yet.' }));
   }
@@ -602,7 +741,7 @@ VIEWS.releases = () => {
 
   wrap.append(releases.increment.length
     ? el('div', { class: 'stack' }, releases.increment.map((i) =>
-        el('div', { class: 'item' }, el('div', { class: 'grow', text: i.text }))))
+        el('div', { class: 'item' }, prose(i.text, 'div', { class: 'grow' }))))
     : el('p', { class: 'empty', text: 'Nothing waiting to be released.' }));
 
   wrap.append(el('section', { class: 'section', style: 'margin-top:22px' },
@@ -615,7 +754,7 @@ VIEWS.releases = () => {
                 el('strong', { text: v.version }),
                 isSet(v.date) ? badge(v.date) : null),
               el('h3', { style: 'margin:5px 0 3px; font-size:14px', text: show(v.title) }),
-              isSet(v.theme) ? el('p', { style: 'margin:0', text: v.theme }) : null,
+              isSet(v.theme) ? prose(v.theme, 'p', { style: 'margin:0' }) : null,
               el('p', { class: 'hint', style: 'margin:6px 0 0',
                 text: `Stories: ${v.stories.join(', ') || EMPTY}  ·  Epics: ${v.epics.join(', ') || EMPTY}` })))))
       : el('p', { class: 'empty', text: 'No releases cut yet.' })));
@@ -787,7 +926,7 @@ function storyDetail(story) {
 
   if (isSet(story.story)) {
     wrap.append(el('div', { class: 'detail-block' },
-      el('h4', { text: 'Story' }), el('p', { text: story.story })));
+      el('h4', { text: 'Story' }), prose(story.story)));
   }
   if (story.criteria_met) {
     wrap.append(el('div', { class: 'detail-block' },
@@ -795,13 +934,13 @@ function storyDetail(story) {
   } else if (story.criteria.length) {
     wrap.append(el('div', { class: 'detail-block' },
       el('h4', { text: 'Acceptance criteria' }),
-      el('ul', {}, story.criteria.map((c) => el('li', { text: c })))));
+      el('ul', {}, story.criteria.map((c) => prose(c, 'li')))));
   }
   if (isSet(story.reason)) {
-    wrap.append(el('div', { class: 'detail-block' }, el('h4', { text: 'Reason' }), el('p', { text: story.reason })));
+    wrap.append(el('div', { class: 'detail-block' }, el('h4', { text: 'Reason' }), prose(story.reason)));
   }
   if (isSet(story.notes)) {
-    wrap.append(el('div', { class: 'detail-block' }, el('h4', { text: 'Notes' }), el('p', { text: story.notes })));
+    wrap.append(el('div', { class: 'detail-block' }, el('h4', { text: 'Notes' }), prose(story.notes)));
   }
 
   const actionsRow = el('div', { class: 'item-actions', style: 'margin-top:16px' },
@@ -831,13 +970,13 @@ function bugDetail(bug) {
                                 ['Actual', bug.actual], ['Assessment', bug.assessment],
                                 ['Notes', bug.notes]]) {
     if (isSet(value)) {
-      wrap.append(el('div', { class: 'detail-block' }, el('h4', { text: label }), el('p', { text: value })));
+      wrap.append(el('div', { class: 'detail-block' }, el('h4', { text: label }), prose(value)));
     }
   }
   if (bug.steps.length) {
     wrap.append(el('div', { class: 'detail-block' },
       el('h4', { text: `Steps to reproduce (${bug.steps_confidence || 'unconfirmed'})` }),
-      el('ol', {}, bug.steps.map((s) => el('li', { text: s })))));
+      el('ol', {}, bug.steps.map((s) => prose(s, 'li')))));
   }
 
   const actionsRow = el('div', { class: 'item-actions', style: 'margin-top:16px' },
