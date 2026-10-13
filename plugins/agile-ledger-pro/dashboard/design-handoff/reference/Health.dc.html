@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Health — standing warnings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;--serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;font-family:var(--sans);color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.t-light{--bg:#F3F4F6;--surface:#FFFFFF;--sunken:#EAECF0;--ink:#14161B;--ink2:#454B56;--ink3:#5F6673;--rule:#E1E4E9;--rule2:#CBD0D8;--accent:#0B7A75;--accent-soft:#E4F4F2;--on-accent:#FFFFFF;--good:#1D7148;--good-soft:#E2F1E9;--warn:#8F5400;--warn-soft:#FAEFD9;--serious:#B93E0A;--serious-soft:#FBE8DD;--crit:#AF2218;--crit-soft:#FAE5E3}
+.t-dark{--bg:#0E1014;--surface:#161920;--sunken:#0A0C0F;--ink:#E7E9ED;--ink2:#B3B9C3;--ink3:#8E95A1;--rule:#252931;--rule2:#343A45;--accent:#3FD4C6;--accent-soft:#0F2B2A;--on-accent:#0E1014;--good:#5BC593;--good-soft:#11281D;--warn:#E6AE4A;--warn-soft:#2A2211;--serious:#EF8A5C;--serious-soft:#2D1A11;--crit:#F07569;--crit-soft:#2E1514}
+a{color:var(--accent)}a:hover{color:var(--ink)}
+button{font:inherit;color:inherit}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sec{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin:0}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px}
+.shell{display:flex;flex-wrap:wrap;min-height:100vh}
+.rail{flex:1 1 232px;max-width:248px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:14px 12px;border-right:1px solid var(--rule)}
+.main{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:18px 36px 56px;display:flex;flex-direction:column;gap:24px}
+.proj{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;margin-bottom:10px;border-radius:9px;border:1px solid transparent;background:transparent;cursor:pointer;text-align:left}
+.nav{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 10px;border-radius:8px;color:var(--ink2);text-decoration:none;font-size:13.5px;font-weight:550}
+.nav:hover{background:var(--sunken);color:var(--ink)}
+.nav[aria-current=page]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--rule)}
+.nav .n{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
+.nav .n-w{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--warn);font-weight:650}
+.nav-label{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);padding:18px 10px 6px}
+.rail-foot{margin-top:auto;padding-top:18px;display:flex;flex-direction:column;gap:10px}
+.who{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid var(--rule);background:var(--surface);text-decoration:none;color:inherit}
+.trust{display:flex;flex-direction:column;gap:5px;padding:0 10px;font-size:12px;color:var(--ink2)}
+.seg{display:flex;padding:3px;gap:2px;border-radius:8px;background:var(--sunken);margin:0 6px}
+.seg button{flex:1;height:26px;border:0;border-radius:6px;background:transparent;color:var(--ink2);font-size:12px;font-weight:550;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--rule)}
+.av{width:24px;height:24px;flex:none;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:650;background:var(--accent-soft);color:var(--accent)}
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.search{flex:1 1 320px;display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border:1px solid var(--rule2);border-radius:9px;background:var(--surface);color:var(--ink3)}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:13.5px;color:var(--ink)}
+.kbd{font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid var(--rule2);border-radius:5px;color:var(--ink3)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink);font-size:13px;font-weight:550;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-g{border-color:transparent;background:transparent;color:var(--ink2)}
+.btn-s{height:28px;padding:0 10px;font-size:12.5px}
+.f{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;padding:16px 18px;border-top:1px solid var(--rule)}
+.f h3{margin:0;font-size:14.5px;font-weight:650;line-height:1.35}
+.f p{margin:4px 0 0;font-size:13px;color:var(--ink2);line-height:1.5}
+.src{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:3px 8px;border-radius:6px;background:var(--sunken);font-family:var(--mono);font-size:11.5px;color:var(--ink2);text-decoration:none}
+.gh{display:flex;align-items:center;gap:10px;padding:14px 18px}
+.gh h2{margin:0;font-size:15px;font-weight:650}
+.gh .c{font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:13px;border-top:1px solid var(--rule)}
+.mk{width:16px;height:16px;flex:none;border-radius:4px;display:grid;place-items:center;margin-top:1px}
+@media (max-width:760px){.rail{max-width:none;flex-basis:100%;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;border-right:0;border-bottom:1px solid var(--rule);padding:8px}.rail .nav-label,.rail .rail-foot,.rail .proj{display:none}.main{padding:16px}}
+</style>
+</helmet>
+<div class="app shell t-{{theme}}">
+  <nav class="rail" aria-label="Main">
+    <a href="Today.dc.html" aria-label="Agile Ledger Pro — Today" style="display: flex; align-items: center; gap: 10px; padding: 6px 10px 14px; text-decoration: none; color: var(--ink)">
+      <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" style="fill: var(--accent)"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" style="stroke: var(--on-accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.01em">Agile Ledger</span>
+      <span style="font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent)">Pro</span>
+    </a>
+    <button class="proj" type="button" aria-label="Switch project, current agile-ledger-pro" style="border-color: var(--rule)">
+      <span style="color: var(--ink3); display: flex"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" stroke-linejoin="round"/></svg></span>
+      <span style="display: flex; flex-direction: column; min-width: 0; flex: 1"><span style="font-weight: 650; font-size: 13.5px">agile-ledger-pro</span><span class="mono" style="font-size: 11px; color: var(--ink3)">ledger 2.0 · main</span></span>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color: var(--ink3)"><path d="m4 6 4 4 4-4"/></svg>
+    </button>
+    <a class="nav" href="Today.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5" stroke-linecap="round"/></svg><span>Today</span><span class="n">7</span></a>
+    <a class="nav" href="Today.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 9.5 4 3.5h8l1.5 6v3h-11zM2.5 9.5h3.5l.8 1.5h2.4l.8-1.5h3.5" stroke-linejoin="round"/></svg><span>Inbox</span><span class="n">3</span></a>
+    <a class="nav" href="Backlog.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6" stroke-linecap="round"/></svg><span>Backlog</span></a>
+    <a class="nav" href="Sprint.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3" width="3" height="10" rx="1"/><rect x="6.5" y="3" width="3" height="7" rx="1"/><rect x="10.5" y="3" width="3" height="4" rx="1"/></svg><span>Sprint</span><span class="n">7</span></a>
+    <a class="nav" href="Ship.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Ship</span><span class="n">3</span></a>
+    <span class="nav-label">Ledger</span>
+    <a class="nav" href="Health.dc.html" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 8h3l1.5-3 3 6L11 8h3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Health</span><span class="n-w">5</span></a>
+    <a class="nav" href="Item.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2.5h5l3 3v8H4zM9 2.5v3h3" stroke-linejoin="round"/></svg><span>Files</span></a>
+    <a class="nav" href="Palette.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3.5 5 3 3-3 3M8 11h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Commands</span></a>
+    <div class="rail-foot">
+      <a class="who" href="MyWork.dc.html"><span class="av">N</span><span style="display: flex; flex-direction: column; flex: 1; min-width: 0"><span style="font-size: 11px; color: var(--ink3)">Viewing as</span><span style="font-weight: 600; font-size: 13px">Nuno · PM</span></span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color: var(--ink3)"><path d="m4 6 4 4 4-4"/></svg></a>
+      <div class="trust">
+        <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--good)"></span>8 files · synced 4s ago</span>
+        <span><span class="mono">3</span> uncommitted · <a href="#">Commit…</a></span>
+      </div>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" aria-pressed="{{pAuto}}" onClick="{{setAuto}}">Auto</button>
+        <button type="button" aria-pressed="{{pLight}}" onClick="{{setLight}}">Light</button>
+        <button type="button" aria-pressed="{{pDark}}" onClick="{{setDark}}">Dark</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="topbar">
+      <label class="search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3" stroke-linecap="round"/></svg><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search or run a command</span><input type="search" placeholder="Find US-031, “swimlanes”, or type a command…"><span class="kbd">⌘K</span></label>
+      <button class="btn" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Run check</button>
+    </div>
+
+    <header style="display: flex; flex-direction: column; gap: 8px">
+      <h1 style="margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15">Health</h1>
+      <p style="margin: 0; font-size: 15px; color: var(--ink2); max-width: 760px">5 open findings. Nothing here stops you from acting — each finding stays until its condition is resolved, then moves to Resolved. Last check 2 min ago.</p>
+    </header>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 12px">
+      <a class="card" href="#ready" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: inherit"><span class="mono" style="font-size: 24px; font-weight: 600">2</span><span style="font-size: 13px; color: var(--ink2)">fail Definition of Ready</span></a>
+      <a class="card" href="#drift" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: inherit"><span class="mono" style="font-size: 24px; font-weight: 600">2</span><span style="font-size: 13px; color: var(--ink2)">ledger drift</span></a>
+      <a class="card" href="#warned" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: inherit"><span class="mono" style="font-size: 24px; font-weight: 600">1</span><span style="font-size: 13px; color: var(--ink2)">saved with a warning</span></a>
+      <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; background: transparent; border-style: dashed"><span class="mono" style="font-size: 24px; font-weight: 600; color: var(--ink2)">3</span><span style="font-size: 13px; color: var(--ink3)">files uncommitted · not counted</span></div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <div style="flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section class="card" id="ready">
+          <div class="gh"><span style="color: var(--warn); display: flex"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2.5 14 13H2z" stroke-linejoin="round"/><path d="M8 6.5v3M8 11.2v.1" stroke-linecap="round"/></svg></span><h2>Fails Definition of Ready</h2><span class="c">2</span><span style="margin-left: auto; font-size: 12.5px; color: var(--ink3)">blocks nothing · warns at planning</span></div>
+          <div class="f">
+            <div>
+              <h3><a href="Item.dc.html" class="mono" style="font-size: 13px; color: inherit">US-037</a> Compact density for tables</h3>
+              <p>Missing an <strong style="color: var(--ink)">estimate</strong>. Story sentence, criteria and priority are in place.</p>
+              <a class="src" href="#">User-Stories.md : 248</a>
+            </div>
+            <div style="display: flex; gap: 8px"><button class="btn btn-p btn-s" type="button">Add estimate…</button></div>
+          </div>
+          <div class="f">
+            <div>
+              <h3><a href="Item.dc.html" class="mono" style="font-size: 13px; color: inherit">US-036</a> Roadmap by target version</h3>
+              <p>Missing <strong style="color: var(--ink)">acceptance criteria</strong>. 8 pt — the largest Ready story, so it matters most for planning.</p>
+              <a class="src" href="#">User-Stories.md : 231</a>
+            </div>
+            <div style="display: flex; gap: 8px"><button class="btn btn-p btn-s" type="button">Write criteria…</button></div>
+          </div>
+        </section>
+
+        <section class="card" id="drift">
+          <div class="gh"><span style="color: var(--serious); display: flex"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 8h3l1.5-3 3 6L11 8h3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><h2>Ledger drift</h2><span class="c">2</span><span style="margin-left: auto; font-size: 12.5px; color: var(--ink3)">from ledger check</span></div>
+          <div class="f">
+            <div>
+              <h3>State mismatch on <a href="Item.dc.html" class="mono" style="font-size: 13px; color: inherit">US-024</a></h3>
+              <p>The index under <span class="mono" style="font-size: 12.5px">EPIC-003</span> says <span class="mono" style="font-size: 12.5px">✅ Ready</span>; the entry says <span class="mono" style="font-size: 12.5px">✅ Delivered</span>. The epic's rollup is counting it as not done.</p>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap"><a class="src" href="#">Epic-Backlog.md : 88</a><a class="src" href="#">User-Stories.md : 141</a></div>
+            </div>
+            <div style="display: flex; gap: 8px"><button class="btn btn-p btn-s" type="button">Use the entry's state</button></div>
+          </div>
+          <div class="f">
+            <div>
+              <h3>Broken link on <a href="Item.dc.html" class="mono" style="font-size: 13px; color: inherit">BUG-013</a></h3>
+              <p>Relates to <span class="mono" style="font-size: 12.5px">US-019</span>, which isn't in this ledger.</p>
+              <a class="src" href="#">Bugs.md : 64</a>
+            </div>
+            <div style="display: flex; gap: 8px"><button class="btn btn-s" type="button">Edit link…</button><button class="btn btn-g btn-s" type="button">Remove link</button></div>
+          </div>
+        </section>
+
+        <section class="card" id="warned">
+          <div class="gh"><span style="color: var(--warn); display: flex"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="8" r="1.8"/><path d="M5.8 8h4.4" stroke-dasharray="1.6 1.4"/></svg></span><h2>Saved with a warning</h2><span class="c">1</span><span style="margin-left: auto; font-size: 12.5px; color: var(--ink3)">kept from action responses</span></div>
+          <div class="f">
+            <div>
+              <h3><a href="Item.dc.html" class="mono" style="font-size: 13px; color: inherit">US-032</a> moved to In Progress before its dependency was done</h3>
+              <p>Depends on <span class="mono" style="font-size: 12.5px">US-031</span> (In Review · Ana). Saved by drag on the board, 12 Oct 16:40. Clears itself when <span class="mono" style="font-size: 12.5px">US-031</span> reaches Done.</p>
+            </div>
+            <div style="display: flex; gap: 8px"><a class="btn btn-s" href="Item.dc.html">Open</a><button class="btn btn-g btn-s" type="button">Acknowledge</button></div>
+          </div>
+        </section>
+
+        <details class="card" style="padding: 14px 18px">
+          <summary style="cursor: pointer; font-size: 14px; font-weight: 600">Resolved this sprint · 3</summary>
+          <p style="margin: 10px 0 0; font-size: 13px; color: var(--ink2)"><span class="mono" style="font-size: 12.5px">US-034</span> estimate added · 11 Oct — <span class="mono" style="font-size: 12.5px">US-031</span> criteria completed · 13 Oct — orphan <span class="mono" style="font-size: 12.5px">BUG-010</span> relinked · 8 Oct</p>
+        </details>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section class="card" style="padding: 20px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 8px"><p class="sec">Definition of Ready</p><a href="#" class="mono" style="font-size: 11.5px">Definitions.md</a></div>
+          <div class="chk"><span class="mk" style="background: var(--sunken); color: var(--ink2); font-family: var(--mono); font-size: 10px">1</span>Story sentence in As a / I want / So that form</div>
+          <div class="chk"><span class="mk" style="background: var(--warn-soft); color: var(--warn); font-family: var(--mono); font-size: 10px">2</span><span>At least one Given / When / Then criterion <span style="color: var(--warn)">· 1 failing</span></span></div>
+          <div class="chk"><span class="mk" style="background: var(--warn-soft); color: var(--warn); font-family: var(--mono); font-size: 10px">3</span><span>Estimated on the Fibonacci scale <span style="color: var(--warn)">· 1 failing</span></span></div>
+          <div class="chk"><span class="mk" style="background: var(--sunken); color: var(--ink2); font-family: var(--mono); font-size: 10px">4</span>Priority set</div>
+          <div class="chk" style="border-bottom: 1px solid var(--rule)"><span class="mk" style="background: var(--sunken); color: var(--ink2); font-family: var(--mono); font-size: 10px">5</span>Dependencies named or “none”</div>
+          <p style="margin: 10px 0 0; font-size: 12px; color: var(--ink3)">Sample items — rendered from the team's own checklist, which today is only visible as raw Markdown.</p>
+        </section>
+        <section class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <p class="sec">Uncommitted</p>
+          <div class="mono" style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--ink2)"><span>M Sprint.md</span><span>M User-Stories.md</span><span>M Ideas.md</span></div>
+          <button class="btn btn-s" type="button" style="align-self: flex-start">Commit ledger…</button>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mode = (this.state && this.state.mode) || 'auto';
+    const theme = mode === 'auto' ? (this.props.theme ?? 'light') : mode;
+    return {
+      theme,
+      pAuto: mode === 'auto' ? 'true' : 'false',
+      pLight: mode === 'light' ? 'true' : 'false',
+      pDark: mode === 'dark' ? 'true' : 'false',
+      setAuto: () => this.setState({ mode: 'auto' }),
+      setLight: () => this.setState({ mode: 'light' }),
+      setDark: () => this.setState({ mode: 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

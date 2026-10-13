@@ -24,7 +24,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from agileledger import actions, mdutil, parse, render, resolve  # noqa: E402
-from agileledger.model import BUG_STATES, LEDGER_FILES, STORY_STATES  # noqa: E402
+from agileledger.model import (BUG_STATES, EPIC_STATES, LEDGER_FILES,  # noqa: E402
+                               STORY_STATES)
 from agileledger.store import Repo  # noqa: E402
 
 FIXTURE = HERE / "fixture"
@@ -433,6 +434,41 @@ def test_blocked_items_separate_title_and_reason():
 
         led.run("set_blocked", item_id="US-002", blocked=False)
         equal(led.repo().sprint()["blocked"], [], "unblocking clears the entry")
+
+
+def test_workspace_vocabulary_carries_the_ledgers_own_words():
+    """The UI draws its own glyphs but must never invent the vocabulary.
+
+    Each glyph shows the ledger's own token on hover, which is also what tells
+    "✅ Ready" apart from "✅ Delivered" — both are a tick. So the labels, and
+    the epic states the glyphs need, have to come from the server.
+    """
+    import serve
+
+    with Ledger() as led:
+        vocabulary = serve.Workspace(led.root).overview()["vocabulary"]
+
+        for key in ("story_states", "bug_states", "epic_states", "board_columns",
+                    "priorities", "severities", "layers", "fibonacci", "files",
+                    "labels"):
+            check(key in vocabulary, f"vocabulary exposes {key}")
+
+        equal(vocabulary["epic_states"], EPIC_STATES, "epic states are published")
+        labels = vocabulary["labels"]
+        equal(sorted(labels), ["bug", "epic", "story"], "labels cover all three entities")
+
+        for state in STORY_STATES + ["Draft"]:
+            check(state in labels["story"], f"story label for {state}")
+        for state in BUG_STATES:
+            check(state in labels["bug"], f"bug label for {state}")
+        for state in EPIC_STATES:
+            check(state in labels["epic"], f"epic label for {state}")
+
+        # The pairs the glyphs have to disambiguate.
+        check(labels["story"]["Ready"] != labels["story"]["Delivered"],
+              "Ready and Delivered are distinguishable tokens")
+        check(all(v.strip() for v in labels["story"].values()),
+              "no story label is blank")
 
 
 def test_markdown_helpers():

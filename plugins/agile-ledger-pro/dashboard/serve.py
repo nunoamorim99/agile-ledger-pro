@@ -29,9 +29,10 @@ sys.path.insert(0, str(HERE))
 
 from agileledger import actions, commands, resolve  # noqa: E402
 from agileledger.actions import ActionError  # noqa: E402
-from agileledger.model import (BOARD_COLUMNS, BUG_STATES, FIBONACCI, LAYERS,  # noqa: E402
+from agileledger.model import (BOARD_COLUMNS, BUG_STATE_LABEL, BUG_STATES,  # noqa: E402
+                               EPIC_STATE_LABEL, EPIC_STATES, FIBONACCI, LAYERS,
                                LEDGER_FILES, PRIORITIES, PRIORITY_NAME,
-                               SEVERITIES, STORY_STATES)
+                               SEVERITIES, STORY_STATE_LABEL, STORY_STATES)
 from agileledger.store import Repo  # noqa: E402
 
 STATIC = HERE / "static"
@@ -72,12 +73,23 @@ class Workspace:
             "vocabulary": {
                 "story_states": STORY_STATES,
                 "bug_states": BUG_STATES,
+                "epic_states": EPIC_STATES,
                 "board_columns": BOARD_COLUMNS,
                 "priorities": [{"value": p, "name": PRIORITY_NAME[p]} for p in PRIORITIES],
                 "severities": SEVERITIES,
                 "layers": LAYERS,
                 "fibonacci": FIBONACCI,
                 "files": LEDGER_FILES,
+                # The ledger's own words, emoji and all. The UI draws its own
+                # glyphs but shows these on hover, so a reader can always get
+                # back to the token that is actually written in the file — and
+                # so "Ready" and "Delivered" stay distinguishable even though
+                # the ledger spells both with a tick.
+                "labels": {
+                    "story": STORY_STATE_LABEL,
+                    "bug": BUG_STATE_LABEL,
+                    "epic": EPIC_STATE_LABEL,
+                },
             },
         }
 

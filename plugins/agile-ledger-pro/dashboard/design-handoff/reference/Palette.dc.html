@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Command palette</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;--serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;font-family:var(--sans);color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.t-light{--bg:#F3F4F6;--surface:#FFFFFF;--sunken:#EAECF0;--ink:#14161B;--ink2:#454B56;--ink3:#5F6673;--rule:#E1E4E9;--rule2:#CBD0D8;--accent:#0B7A75;--accent-soft:#E4F4F2;--on-accent:#FFFFFF;--good:#1D7148;--good-soft:#E2F1E9;--warn:#8F5400;--warn-soft:#FAEFD9;--serious:#B93E0A;--serious-soft:#FBE8DD;--crit:#AF2218;--crit-soft:#FAE5E3}
+.t-dark{--bg:#0E1014;--surface:#161920;--sunken:#0A0C0F;--ink:#E7E9ED;--ink2:#B3B9C3;--ink3:#8E95A1;--rule:#252931;--rule2:#343A45;--accent:#3FD4C6;--accent-soft:#0F2B2A;--on-accent:#0E1014;--good:#5BC593;--good-soft:#11281D;--warn:#E6AE4A;--warn-soft:#2A2211;--serious:#EF8A5C;--serious-soft:#2D1A11;--crit:#F07569;--crit-soft:#2E1514}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.kbd{font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid var(--rule2);border-radius:5px;color:var(--ink3)}
+.grp{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);padding:12px 16px 6px}
+.opt{display:grid;grid-template-columns:18px 64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 16px;font-size:13.5px;color:var(--ink)}
+.opt-on{background:var(--accent-soft)}
+.st{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ink2);white-space:nowrap}
+.st-sub{padding-left:7px;border-left:1px solid var(--rule2);color:var(--ink);font-weight:550}
+mark{background:transparent;color:var(--accent);font-weight:700}
+</style>
+</helmet>
+<div class="app t-{{theme}}" style="width: 880px; height: 640px; box-sizing: border-box; position: relative; overflow: hidden; display: flex; justify-content: center; padding-top: 56px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; padding: 24px; display: flex; gap: 16px; opacity: .35">
+    <div style="width: 180px; border-radius: 10px; background: var(--sunken)"></div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 12px"><div style="height: 36px; border-radius: 9px; background: var(--sunken)"></div><div style="flex: 1; border-radius: 12px; background: var(--sunken)"></div></div>
+  </div>
+  <div role="dialog" aria-label="Find or run" style="position: relative; width: 640px; align-self: flex-start; border-radius: 14px; background: var(--surface); border: 1px solid var(--rule2); box-shadow: 0 24px 60px rgba(0,0,0,.35); overflow: hidden">
+    <label style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--rule)">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color: var(--ink3)"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3" stroke-linecap="round"/></svg>
+      <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Find an item or run a command</span>
+      <input type="text" value="us-03" style="flex: 1; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink)">
+      <span class="kbd">esc</span>
+    </label>
+    <div role="listbox" aria-label="Results">
+      <div class="grp">Items · 6</div>
+      <div class="opt opt-on" role="option" aria-selected="true"><span style="color: var(--accent); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 7V3.25A3.75 3.75 0 0 1 7 10.75Z" fill="currentColor"/></svg></span><span class="mono" style="font-size: 12.5px"><mark>US-03</mark>1</span><span>Item URLs and back-button routing</span><span class="st">In Sprint<span class="st-sub">In Review</span></span></div>
+      <div class="opt" role="option" aria-selected="false"><span style="color: var(--accent); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 7V3.25A3.75 3.75 0 0 1 10.75 7Z" fill="currentColor"/></svg></span><span class="mono" style="font-size: 12.5px"><mark>US-03</mark>2</span><span>Command palette with ID search</span><span class="st">In Sprint<span class="st-sub">In Progress</span></span></div>
+      <div class="opt" role="option" aria-selected="false"><span style="color: var(--accent); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg></span><span class="mono" style="font-size: 12.5px"><mark>US-03</mark>5</span><span>Standing Health view</span><span class="st" style="color: var(--crit)">Blocked</span></div>
+      <div class="opt" role="option" aria-selected="false"><span style="color: var(--accent); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span><span class="mono" style="font-size: 12.5px"><mark>US-03</mark>6</span><span>Roadmap by target version</span><span class="st">Ready</span></div>
+      <div style="padding: 2px 16px 6px 108px; font-size: 12px; color: var(--ink3)">+ 2 more · <span class="mono">US-037</span>, <span class="mono">US-038</span></div>
+      <div class="grp">Do it here</div>
+      <div class="opt" role="option" aria-selected="false"><span style="color: var(--ink3); display: flex"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke-linecap="round"/></svg></span><span style="font-size: 12px; color: var(--ink3)">form</span><span>Detail a Draft story…</span><span class="kbd">↵</span></div>
+      <div class="opt" role="option" aria-selected="false"><span style="color: var(--ink3); display: flex"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3" width="3" height="10" rx="1"/><rect x="6.5" y="3" width="3" height="7" rx="1"/><rect x="10.5" y="3" width="3" height="4" rx="1"/></svg></span><span style="font-size: 12px; color: var(--ink3)">action</span><span>Pull <span class="mono" style="font-size: 12.5px">US-038</span> into the sprint</span><span class="kbd">↵</span></div>
+      <div class="grp">In Claude Code</div>
+      <div class="opt" role="option" aria-selected="false"><span style="color: var(--ink3); display: flex"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3.5 5 3 3-3 3M8 11h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink3)">/roadmap</span><span style="color: var(--ink2)">Roadmap as text — or open Ship in this page</span><span style="font-size: 12px; color: var(--ink3)">Copy</span></div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--ink3)">
+      <span><span class="kbd">↑</span> <span class="kbd">↓</span> move</span>
+      <span><span class="kbd">↵</span> open page</span>
+      <span><span class="kbd">⇧↵</span> peek in drawer</span>
+      <span><span class="kbd">tab</span> actions on item</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"dark"},"$preview":{"width":880,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

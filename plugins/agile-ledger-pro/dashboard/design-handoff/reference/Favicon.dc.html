@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Brand mark and favicon</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;--serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;font-family:var(--sans);color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.t-light{--bg:#F3F4F6;--surface:#FFFFFF;--sunken:#EAECF0;--ink:#14161B;--ink2:#454B56;--ink3:#5F6673;--rule:#E1E4E9;--rule2:#CBD0D8;--accent:#0B7A75;--accent-soft:#E4F4F2;--on-accent:#FFFFFF}
+.t-dark{--bg:#0E1014;--surface:#161920;--sunken:#0A0C0F;--ink:#E7E9ED;--ink2:#B3B9C3;--ink3:#8E95A1;--rule:#252931;--rule2:#343A45;--accent:#3FD4C6;--accent-soft:#0F2B2A;--on-accent:#0E1014}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sec{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin:0}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px}
+.pro{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:var(--accent-soft);color:var(--accent)}
+.sz{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
+.tab{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:9px 9px 0 0;font-size:12.5px;width:230px;box-sizing:border-box}
+</style>
+</helmet>
+<div class="app t-light" style="width: 1000px; min-height: 1700px; box-sizing: border-box; padding: 64px 72px 72px; display: flex; flex-direction: column; gap: 44px">
+
+  <header style="display: flex; flex-direction: column; gap: 12px">
+    <p class="sec">Brand mark · favicon · dashboard and skill icon</p>
+    <h1 style="margin: 0; font-family: var(--serif); font-size: 46px; line-height: 1.08; font-weight: 600; letter-spacing: -0.02em">AL, side by side.</h1>
+    <p style="margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink2); max-width: 720px">The A keeps a straight right leg that echoes the L's stem, with a small gap so they read as two letters — like two columns in a ruled ledger. “Pro” lives in the wordmark, never inside the mark, so the icon stays legible at 16 px.</p>
+  </header>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+    <div class="card" style="padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 28px">
+      <svg width="200" height="200" viewBox="0 0 32 32" role="img" aria-label="Agile Ledger Pro mark, light"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.01em">Agile Ledger</span><span class="pro">Pro</span>
+      </div>
+    </div>
+    <div class="card t-dark" style="padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 28px; background: #161920; border-color: #252931; color: #E7E9ED">
+      <svg width="200" height="200" viewBox="0 0 32 32" role="img" aria-label="Agile Ledger Pro mark, dark"><rect width="32" height="32" rx="8" fill="#3FD4C6"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#0E1014" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#3FD4C6"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#0E1014" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.01em">Agile Ledger</span><span class="pro">Pro</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="padding: 28px 32px; display: flex; flex-direction: column; gap: 20px">
+    <p class="sec">At real size</p>
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 44px">
+      <div class="sz"><svg width="128" height="128" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>512 · shown ¼</div>
+      <div class="sz"><svg width="90" height="90" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>180 · shown ½</div>
+      <div class="sz"><svg width="64" height="64" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>64</div>
+      <div class="sz"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>32</div>
+      <div class="sz"><svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>16</div>
+      <div class="sz"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="1.25" y="1.25" width="29.5" height="29.5" rx="7" fill="none" stroke="#14161B" stroke-width="2.5"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#14161B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>mono</div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 14px">
+    <p class="sec">In the browser tab</p>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+      <div style="padding: 10px 10px 0; border-radius: 12px 12px 0 0; background: #DADDE3; display: flex; gap: 4px">
+        <div class="tab" style="background: #FFFFFF; color: #14161B"><svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Today · Agile Ledger Pro</span></div>
+        <div class="tab" style="color: #454B56"><span style="width: 16px; height: 16px; border-radius: 4px; background: #B9BEC7"></span><span>Pull request #148</span></div>
+      </div>
+      <div style="padding: 10px 10px 0; border-radius: 12px 12px 0 0; background: #1F232A; display: flex; gap: 4px">
+        <div class="tab" style="background: #2B3038; color: #E7E9ED"><svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#3FD4C6"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" stroke="#0E1014" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">US-031 · Agile Ledger Pro</span></div>
+        <div class="tab" style="color: #8E95A1"><span style="width: 16px; height: 16px; border-radius: 4px; background: #3A404A"></span><span>Pull request #148</span></div>
+      </div>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: var(--ink2)">The tab title follows the route — <span class="mono" style="font-size: 12.5px">Today</span>, <span class="mono" style="font-size: 12.5px">Sprint</span>, <span class="mono" style="font-size: 12.5px">US-031</span> — so several open tabs stay tellable apart.</p>
+  </section>
+
+  <section style="display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; align-items: start">
+    <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 12px">
+      <p class="sec">static/favicon.svg · one file, both themes, no network</p>
+      <pre class="mono" style="margin: 0; padding: 16px; border-radius: 9px; background: var(--bg); font-size: 12px; line-height: 1.65; color: var(--ink2); overflow-x: auto; white-space: pre">&lt;svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"&gt;
+  &lt;style&gt;
+    rect { fill: #0B7A75 } path { stroke: #FFFFFF }
+    @media (prefers-color-scheme: dark) {
+      rect { fill: #3FD4C6 } path { stroke: #0E1014 }
+    }
+  &lt;/style&gt;
+  &lt;rect width="32" height="32" rx="8"/&gt;
+  &lt;path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none"
+        stroke-width="3" stroke-linecap="round"
+        stroke-linejoin="round"/&gt;
+&lt;/svg&gt;</pre>
+      <pre class="mono" style="margin: 0; padding: 12px 16px; border-radius: 9px; background: var(--bg); font-size: 12px; color: var(--ink2); overflow-x: auto; white-space: pre">&lt;link rel="icon" href="favicon.svg" type="image/svg+xml"&gt;</pre>
+    </div>
+    <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px; background: transparent; border-style: dashed; border-color: var(--rule2)">
+      <p class="sec">Option B · the two letters apart</p>
+      <div style="display: flex; align-items: flex-end; gap: 24px">
+        <svg width="96" height="96" viewBox="0 0 32 32" role="img" aria-label="Alternative mark with separate A and L"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M6 24 11.5 8 17 24M7.9 18.5H15.1M20.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M6 24 11.5 8 17 24M7.9 18.5H15.1M20.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B7A75"/><path d="M6 24 11.5 8 17 24M7.9 18.5H15.1M20.5 8V24H26.5" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: var(--ink2); line-height: 1.5">Reads as “AL” instantly, but gets crowded at 16 px. Kept here for comparison.</p>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":1700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

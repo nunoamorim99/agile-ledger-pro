@@ -31,14 +31,18 @@ DIST = ROOT / "dist"
 
 
 def _skip_from_bundle(path: Path) -> bool:
-    """Caches, and the test fixture.
+    """Caches, the test fixture, and the design handoff.
 
     The fixture is deliberately excluded: it contains a Registry.md carrying the
     real `# Agile-Ledger Registry` marker, and an installed copy of it sitting
     under .claude/ could be picked up as a ledger root by the resolver.
+
+    `design-handoff/` is the design source of truth for the remaining phases —
+    it belongs in the repository, not in a quarter-megabyte of mockups shipped
+    to everyone who installs the plugin.
     """
     parts = path.parts
-    return ("__pycache__" in parts or "tests" in parts
+    return ("__pycache__" in parts or "tests" in parts or "design-handoff" in parts
             or path.suffix in {".pyc", ".pyo"})
 
 
@@ -109,6 +113,8 @@ def check(full: Path, skill: Path) -> int:
     # A stray Registry.md under .claude/ could be mistaken for a ledger root.
     if any("/tests/" in n or n.endswith("Registry.md") for n in names):
         errors.append("full bundle ships the test fixture")
+    if any("design-handoff" in n for n in names):
+        errors.append("full bundle ships the design handoff")
 
     with zipfile.ZipFile(skill) as zf:
         skill_names = zf.namelist()

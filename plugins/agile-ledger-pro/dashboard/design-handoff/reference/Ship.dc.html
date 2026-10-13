@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ship — roadmap, increment, releases</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.app{--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;--serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;font-family:var(--sans);color:var(--ink);background:var(--bg);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.t-light{--bg:#F3F4F6;--surface:#FFFFFF;--sunken:#EAECF0;--ink:#14161B;--ink2:#454B56;--ink3:#5F6673;--rule:#E1E4E9;--rule2:#CBD0D8;--accent:#0B7A75;--accent-soft:#E4F4F2;--on-accent:#FFFFFF;--good:#1D7148;--good-soft:#E2F1E9;--warn:#8F5400;--warn-soft:#FAEFD9;--serious:#B93E0A;--serious-soft:#FBE8DD;--crit:#AF2218;--crit-soft:#FAE5E3}
+.t-dark{--bg:#0E1014;--surface:#161920;--sunken:#0A0C0F;--ink:#E7E9ED;--ink2:#B3B9C3;--ink3:#8E95A1;--rule:#252931;--rule2:#343A45;--accent:#3FD4C6;--accent-soft:#0F2B2A;--on-accent:#0E1014;--good:#5BC593;--good-soft:#11281D;--warn:#E6AE4A;--warn-soft:#2A2211;--serious:#EF8A5C;--serious-soft:#2D1A11;--crit:#F07569;--crit-soft:#2E1514}
+a{color:var(--accent)}a:hover{color:var(--ink)}
+button{font:inherit;color:inherit}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sec{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);margin:0}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px}
+.shell{display:flex;flex-wrap:wrap;min-height:100vh}
+.rail{flex:1 1 232px;max-width:248px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:14px 12px;border-right:1px solid var(--rule)}
+.main{flex:999 1 560px;min-width:0;box-sizing:border-box;padding:18px 36px 56px;display:flex;flex-direction:column;gap:26px}
+.proj{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;margin-bottom:10px;border-radius:9px;border:1px solid transparent;background:transparent;cursor:pointer;text-align:left}
+.nav{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 10px;border-radius:8px;color:var(--ink2);text-decoration:none;font-size:13.5px;font-weight:550}
+.nav:hover{background:var(--sunken);color:var(--ink)}
+.nav[aria-current=page]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--rule)}
+.nav .n{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
+.nav .n-w{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--warn);font-weight:650}
+.nav-label{font-size:11px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);padding:18px 10px 6px}
+.rail-foot{margin-top:auto;padding-top:18px;display:flex;flex-direction:column;gap:10px}
+.who{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid var(--rule);background:var(--surface);text-decoration:none;color:inherit}
+.trust{display:flex;flex-direction:column;gap:5px;padding:0 10px;font-size:12px;color:var(--ink2)}
+.seg{display:flex;padding:3px;gap:2px;border-radius:8px;background:var(--sunken);margin:0 6px}
+.seg button{flex:1;height:26px;border:0;border-radius:6px;background:transparent;color:var(--ink2);font-size:12px;font-weight:550;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--rule)}
+.av{width:24px;height:24px;flex:none;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:650;background:var(--accent-soft);color:var(--accent)}
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.search{flex:1 1 320px;display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border:1px solid var(--rule2);border-radius:9px;background:var(--surface);color:var(--ink3)}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:13.5px;color:var(--ink)}
+.kbd{font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid var(--rule2);border-radius:5px;color:var(--ink3)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink);font-size:13px;font-weight:550;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-s{height:28px;padding:0 10px;font-size:12.5px}
+.pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:11px;font-size:12px;font-weight:550;white-space:nowrap;background:var(--sunken);color:var(--ink2)}
+.ep{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:10px;border:1px solid var(--rule);background:var(--surface)}
+.bar{height:5px;border-radius:3px;background:var(--sunken);overflow:hidden;display:flex}
+.bar span{background:var(--accent);border-radius:3px}
+.li{display:grid;grid-template-columns:18px 70px minmax(0,1fr);gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--rule);font-size:13.5px}
+@media (max-width:760px){.rail{max-width:none;flex-basis:100%;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;border-right:0;border-bottom:1px solid var(--rule);padding:8px}.rail .nav-label,.rail .rail-foot,.rail .proj{display:none}.main{padding:16px}}
+</style>
+</helmet>
+<div class="app shell t-{{theme}}">
+  <nav class="rail" aria-label="Main">
+    <a href="Today.dc.html" aria-label="Agile Ledger Pro — Today" style="display: flex; align-items: center; gap: 10px; padding: 6px 10px 14px; text-decoration: none; color: var(--ink)">
+      <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" style="fill: var(--accent)"/><path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none" style="stroke: var(--on-accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.01em">Agile Ledger</span>
+      <span style="font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent)">Pro</span>
+    </a>
+    <button class="proj" type="button" aria-label="Switch project, current agile-ledger-pro" style="border-color: var(--rule)">
+      <span style="color: var(--ink3); display: flex"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" stroke-linejoin="round"/></svg></span>
+      <span style="display: flex; flex-direction: column; min-width: 0; flex: 1"><span style="font-weight: 650; font-size: 13.5px">agile-ledger-pro</span><span class="mono" style="font-size: 11px; color: var(--ink3)">ledger 2.0 · main</span></span>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color: var(--ink3)"><path d="m4 6 4 4 4-4"/></svg>
+    </button>
+    <a class="nav" href="Today.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5" stroke-linecap="round"/></svg><span>Today</span><span class="n">7</span></a>
+    <a class="nav" href="Today.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 9.5 4 3.5h8l1.5 6v3h-11zM2.5 9.5h3.5l.8 1.5h2.4l.8-1.5h3.5" stroke-linejoin="round"/></svg><span>Inbox</span><span class="n">3</span></a>
+    <a class="nav" href="Backlog.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6" stroke-linecap="round"/></svg><span>Backlog</span></a>
+    <a class="nav" href="Sprint.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3" width="3" height="10" rx="1"/><rect x="6.5" y="3" width="3" height="7" rx="1"/><rect x="10.5" y="3" width="3" height="4" rx="1"/></svg><span>Sprint</span><span class="n">7</span></a>
+    <a class="nav" href="Ship.dc.html" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Ship</span><span class="n">3</span></a>
+    <span class="nav-label">Ledger</span>
+    <a class="nav" href="Health.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 8h3l1.5-3 3 6L11 8h3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Health</span><span class="n-w">5</span></a>
+    <a class="nav" href="Item.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2.5h5l3 3v8H4zM9 2.5v3h3" stroke-linejoin="round"/></svg><span>Files</span></a>
+    <a class="nav" href="Palette.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3.5 5 3 3-3 3M8 11h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Commands</span></a>
+    <div class="rail-foot">
+      <a class="who" href="MyWork.dc.html"><span class="av">N</span><span style="display: flex; flex-direction: column; flex: 1; min-width: 0"><span style="font-size: 11px; color: var(--ink3)">Viewing as</span><span style="font-weight: 600; font-size: 13px">Nuno · PM</span></span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color: var(--ink3)"><path d="m4 6 4 4 4-4"/></svg></a>
+      <div class="trust">
+        <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--good)"></span>8 files · synced 4s ago</span>
+        <span><span class="mono">3</span> uncommitted · <a href="#">Commit…</a></span>
+      </div>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" aria-pressed="{{pAuto}}" onClick="{{setAuto}}">Auto</button>
+        <button type="button" aria-pressed="{{pLight}}" onClick="{{setLight}}">Light</button>
+        <button type="button" aria-pressed="{{pDark}}" onClick="{{setDark}}">Dark</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="topbar">
+      <label class="search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3" stroke-linecap="round"/></svg><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search or run a command</span><input type="search" placeholder="Find US-031, “swimlanes”, or type a command…"><span class="kbd">⌘K</span></label>
+      <button class="btn" type="button">Copy as release notes</button>
+    </div>
+
+    <header style="display: flex; flex-direction: column; gap: 8px">
+      <h1 style="margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15">What shipped, and what's next.</h1>
+      <p style="margin: 0; font-size: 15px; color: var(--ink2)">Epics grouped by the version they're aimed at, the work that's done but not yet released, and every release so far.</p>
+    </header>
+
+    <section style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 12px"><h2 style="margin: 0; font-size: 16px; font-weight: 650">Roadmap</h2><span style="font-size: 13px; color: var(--ink3)">by epic target version</span></div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px">
+        <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--accent-soft); border-color: transparent">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px"><span class="mono" style="font-size: 20px; font-weight: 650">v2.2</span><span style="font-size: 12.5px; color: var(--accent); font-weight: 650">Next · in progress</span></div>
+          <div class="ep">
+            <div style="display: flex; align-items: center; gap: 8px"><span style="color: var(--accent); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.75" y="1.75" width="10.5" height="10.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="6.5" width="6" height="3.5" rx="1" fill="currentColor"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink2)">EPIC-004</span><strong style="font-size: 14px">Dashboard v2</strong></div>
+            <span class="bar"><span style="width: 24%"></span></span>
+            <span style="font-size: 12.5px; color: var(--ink2)"><span class="mono">6 / 25 pt</span> · 2 of 12 stories · 5 in this sprint</span>
+          </div>
+          <div class="ep">
+            <div style="display: flex; align-items: center; gap: 8px"><span style="color: var(--accent); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.75" y="1.75" width="10.5" height="10.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="8.5" width="6" height="1.5" rx=".75" fill="currentColor"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink2)">EPIC-005</span><strong style="font-size: 14px">Ledger health</strong></div>
+            <span class="bar"><span style="width: 2%"></span></span>
+            <span style="font-size: 12.5px; color: var(--ink2)"><span class="mono">0 / 5 pt</span> · 1 Draft not estimated</span>
+          </div>
+        </div>
+        <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px"><span class="mono" style="font-size: 20px; font-weight: 650">v2.3</span><span style="font-size: 12.5px; color: var(--ink3); font-weight: 650">Later</span></div>
+          <div class="ep">
+            <div style="display: flex; align-items: center; gap: 8px"><span style="color: var(--ink3); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.75" y="1.75" width="10.5" height="10.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.6 1.9"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink2)">EPIC-006</span><strong style="font-size: 14px">Roadmap view</strong></div>
+            <span style="font-size: 12.5px; color: var(--ink2)">Proposed · <span class="mono">0 / 8 pt</span> · 1 Ready, 1 Draft</span>
+          </div>
+        </div>
+        <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 10px; background: transparent; border-style: dashed">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px"><span style="font-size: 16px; font-weight: 650">No target</span><span style="font-size: 12.5px; color: var(--ink3)">0 epics</span></div>
+          <p style="margin: 0; font-size: 13px; color: var(--ink2); line-height: 1.5">Every active epic has a target version. Epics without one would collect here, so nothing falls off the roadmap.</p>
+        </div>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <section class="card" style="flex: 1 1 380px; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+          <div><h2 style="margin: 0; font-size: 16px; font-weight: 650">Increment</h2><p style="margin: 2px 0 0; font-size: 13px; color: var(--ink2)">Delivered since <span class="mono">v2.1</span>, not yet in a release</p></div>
+          <button class="btn btn-p" type="button">Cut release…</button>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div class="li"><span style="color: var(--good); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.25" fill="currentColor"/><path d="M4.4 7.2 6.2 9 9.7 5.2" fill="none" style="stroke: var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink2)">US-027</span><span>Live reload when the ledger changes on disk</span></div>
+          <div class="li"><span style="color: var(--good); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.25" fill="currentColor"/><path d="M4.4 7.2 6.2 9 9.7 5.2" fill="none" style="stroke: var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink2)">US-028</span><span>Commands sheet generated from installed commands</span></div>
+          <div class="li" style="border-bottom: 1px solid var(--rule)"><span style="color: var(--good); display: flex"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 .5 13.5 7 7 13.5 .5 7Z" fill="currentColor"/><path d="M4.6 7.1 6.3 8.8 9.5 5.4" fill="none" style="stroke: var(--surface)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="mono" style="font-size: 12px; color: var(--ink2)">BUG-009</span><span>Toasts stack off-screen on short windows</span></div>
+        </div>
+      </section>
+
+      <section class="card" style="flex: 1.4 1 480px; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap">
+          <h2 style="margin: 0; font-size: 16px; font-weight: 650">Velocity</h2>
+          <span style="font-size: 13px; color: var(--ink2)">rolling 3 sprints <span class="mono" style="color: var(--ink); font-weight: 600">20.7 pt</span></span>
+        </div>
+        <svg viewBox="0 0 600 180" width="100%" role="img" aria-label="Completed points per sprint: S01 13, S02 18, S03 16, S04 21, S05 19, S06 22. Rolling average 20.7.">
+          <path d="M30 150H570" style="stroke: var(--rule2)" stroke-width="1"/>
+          <path d="M30 98H570M30 46H570" style="stroke: var(--rule)" stroke-width="1"/>
+          <text x="24" y="154" text-anchor="end" style="fill: var(--ink3); font: 10.5px var(--mono)">0</text>
+          <text x="24" y="102" text-anchor="end" style="fill: var(--ink3); font: 10.5px var(--mono)">10</text>
+          <text x="24" y="50" text-anchor="end" style="fill: var(--ink3); font: 10.5px var(--mono)">20</text>
+          <path d="M40 150V86.4Q40 82.4 44 82.4H92Q96 82.4 96 86.4V150Z" style="fill: var(--accent)"><title>2026-S01 · 13 of 15 pt</title></path>
+          <path d="M130 150V60.4Q130 56.4 134 56.4H182Q186 56.4 186 60.4V150Z" style="fill: var(--accent)"><title>2026-S02 · 18 of 20 pt</title></path>
+          <path d="M220 150V70.8Q220 66.8 224 66.8H272Q276 66.8 276 70.8V150Z" style="fill: var(--accent)"><title>2026-S03 · 16 of 18 pt</title></path>
+          <path d="M310 150V44.8Q310 40.8 314 40.8H362Q366 40.8 366 44.8V150Z" style="fill: var(--accent)"><title>2026-S04 · 21 of 21 pt</title></path>
+          <path d="M400 150V55.2Q400 51.2 404 51.2H452Q456 51.2 456 55.2V150Z" style="fill: var(--accent)"><title>2026-S05 · 19 of 22 pt</title></path>
+          <path d="M490 150V39.6Q490 35.6 494 35.6H542Q546 35.6 546 39.6V150Z" style="fill: var(--accent)"><title>2026-S06 · 22 of 24 pt</title></path>
+          <path d="M30 42.4H570" style="stroke: var(--ink)" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <text x="570" y="36" text-anchor="end" style="fill: var(--ink); font: 600 11px var(--mono)">20.7 rolling</text>
+          <text x="518" y="28" text-anchor="middle" style="fill: var(--ink); font: 600 12px var(--mono)">22</text>
+          <text x="68" y="168" text-anchor="middle" style="fill: var(--ink3); font: 11px var(--mono)">S01</text>
+          <text x="158" y="168" text-anchor="middle" style="fill: var(--ink3); font: 11px var(--mono)">S02</text>
+          <text x="248" y="168" text-anchor="middle" style="fill: var(--ink3); font: 11px var(--mono)">S03</text>
+          <text x="338" y="168" text-anchor="middle" style="fill: var(--ink3); font: 11px var(--mono)">S04</text>
+          <text x="428" y="168" text-anchor="middle" style="fill: var(--ink3); font: 11px var(--mono)">S05</text>
+          <text x="518" y="168" text-anchor="middle" style="fill: var(--ink3); font: 11px var(--mono)">S06</text>
+        </svg>
+        <p style="margin: 0; font-size: 12.5px; color: var(--ink3)">Hover a column for committed vs completed, theme and dates · <a href="#">View as table</a></p>
+      </section>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 16px; font-weight: 650">Releases</h2>
+      <article class="card" style="padding: 24px; display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 24px">
+        <div style="display: flex; flex-direction: column; gap: 4px"><span class="mono" style="font-size: 22px; font-weight: 650">v2.1</span><span class="mono" style="font-size: 12.5px; color: var(--ink3)">22 Sep 2026</span></div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <h3 style="margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 600">Bugs as a parallel track</h3>
+          <p style="margin: 0; font-size: 14.5px; color: var(--ink2); line-height: 1.55; max-width: 760px">Bugs get their own file, triage flow and severity, and share the sprint board with stories.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="pill mono" style="font-size: 11.5px">EPIC-003</span><span class="pill">8 stories</span><span class="pill mono" style="font-size: 11.5px">BUG-004 · BUG-006</span></div>
+        </div>
+      </article>
+      <article class="card" style="padding: 24px; display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 24px">
+        <div style="display: flex; flex-direction: column; gap: 4px"><span class="mono" style="font-size: 22px; font-weight: 650; color: var(--ink2)">v2.0</span><span class="mono" style="font-size: 12.5px; color: var(--ink3)">[DATE]</span></div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <h3 style="margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 600; color: var(--ink2)">[Release title]</h3>
+          <p style="margin: 0; font-size: 14px; color: var(--ink3)">[Theme line from Releases.md]</p>
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mode = (this.state && this.state.mode) || 'auto';
+    const theme = mode === 'auto' ? (this.props.theme ?? 'light') : mode;
+    return {
+      theme,
+      pAuto: mode === 'auto' ? 'true' : 'false',
+      pLight: mode === 'light' ? 'true' : 'false',
+      pDark: mode === 'dark' ? 'true' : 'false',
+      setAuto: () => this.setState({ mode: 'auto' }),
+      setLight: () => this.setState({ mode: 'light' }),
+      setDark: () => this.setState({ mode: 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

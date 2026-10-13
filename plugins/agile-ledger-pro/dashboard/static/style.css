@@ -1,87 +1,41 @@
-/* Agile-Ledger Pro dashboard.
+/* Agile-Ledger Pro dashboard — "Ruled Ledger".
  *
- * Colours come from the data-viz reference palette: one categorical slot (blue)
- * for the single-series velocity chart, the reserved status palette for state,
- * and the documented chrome/ink tokens for everything else. The dark steps are
- * selected for the dark surface, not an automatic flip, and are declared under
- * both the OS media query and the explicit theme stamp so the toggle wins.
+ * Colour, type and spacing come from tokens.css (the design handoff, used
+ * as-is). This file maps the names the markup already uses onto those tokens,
+ * then styles the components.
+ *
+ * Status tones are reserved and never carry meaning alone: every state shows a
+ * drawn glyph and the ledger's own word, with the ledger's emoji token on hover.
  */
 
 :root {
-  color-scheme: light;
+  /* --- aliases onto tokens.css, so existing rules keep working ------------ */
+  --plane:        var(--bg);
+  --surface-2:    var(--sunken);
+  --ink-2:        var(--ink2);
+  --muted:        var(--ink3);
+  --border:       var(--rule);
+  --border-firm:  var(--rule2);
+  --grid:         var(--rule);
+  --baseline:     var(--rule2);
 
-  --plane:        #f9f9f7;
-  --surface:      #fcfcfb;
-  --surface-2:    #f2f1ed;
-  --ink:          #0b0b0b;
-  --ink-2:        #52514e;
-  --muted:        #898781;
-  --grid:         #e1e0d9;
-  --baseline:     #c3c2b7;
-  --border:       rgba(11, 11, 11, 0.10);
-  --border-firm:  rgba(11, 11, 11, 0.18);
+  --series-1:     var(--accent);          /* the single chart series */
+  --series-wash:  var(--accent-soft);
+  --track:        var(--sunken);          /* meter trough */
+  --warning:      var(--warn);
+  --critical:     var(--crit);
 
-  --series-1:     #2a78d6;   /* the only series colour on screen */
-  --series-wash:  rgba(42, 120, 214, 0.10);
-  --track:        #cde2fb;   /* lighter step of the same ramp, for meters */
-
-  --good:         #0ca30c;
-  --warning:      #fab219;
-  --serious:      #ec835a;
-  --critical:     #d03b3b;
-
-  --radius:   10px;
-  --radius-s: 7px;
-  --shadow:   0 1px 2px rgba(11, 11, 11, .06), 0 8px 24px rgba(11, 11, 11, .08);
-  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --radius:   var(--radius-card);
+  --radius-s: var(--radius-control);
+  --shadow:   0 1px 2px rgba(20, 22, 27, .06), 0 8px 24px rgba(20, 22, 27, .08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --plane:       #0d0d0d;
-    --surface:     #1a1a19;
-    --surface-2:   #232321;
-    --ink:         #f0efec;
-    --ink-2:       #c3c2b7;
-    --muted:       #898781;
-    --grid:        #2c2c2a;
-    --baseline:    #383835;
-    --border:      rgba(255, 255, 255, 0.10);
-    --border-firm: rgba(255, 255, 255, 0.20);
-    --series-1:    #3987e5;
-    --series-wash: rgba(57, 135, 229, 0.16);
-    --track:       #184f95;
-  }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --plane:       #0d0d0d;
-  --surface:     #1a1a19;
-  --surface-2:   #232321;
-  --ink:         #f0efec;
-  --ink-2:       #c3c2b7;
-  --muted:       #898781;
-  --grid:        #2c2c2a;
-  --baseline:    #383835;
-  --border:      rgba(255, 255, 255, 0.10);
-  --border-firm: rgba(255, 255, 255, 0.20);
-  --series-1:    #3987e5;
-  --series-wash: rgba(57, 135, 229, 0.16);
-  --track:       #184f95;
+:root[data-theme="dark"], :root:not([data-theme="light"]) {
+  --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
 }
 
 * { box-sizing: border-box; }
 
-body {
-  margin: 0;
-  background: var(--plane);
-  color: var(--ink);
-  font: 14px/1.5 var(--sans);
-  -webkit-font-smoothing: antialiased;
-}
 
 h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.25; }
 a { color: var(--series-1); }
@@ -97,13 +51,16 @@ button, select, input, textarea { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 30;
   flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 9px; font-size: 15px; }
-.brand-name { white-space: nowrap; }
-.brand-name b { font-weight: 700; color: var(--series-1); }
-.brand-mark {
-  width: 18px; height: 18px; border-radius: 5px;
-  background: var(--series-1);
-  box-shadow: inset 0 0 0 3px var(--surface), 0 0 0 1px var(--series-1);
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  background: none; border: 0; padding: 2px; margin: -2px;
+  border-radius: var(--radius-control); cursor: pointer;
+}
+.brand-name { font-size: 15px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.brand-pro {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 2px 6px; border-radius: 5px;
+  background: var(--accent-soft); color: var(--accent);
 }
 .spacer { flex: 1 1 auto; }
 .ledger-path {
@@ -117,9 +74,9 @@ button, select, input, textarea { font: inherit; color: inherit; }
 
 select, input[type=text], input[type=number], textarea {
   background: var(--surface);
-  border: 1px solid var(--border-firm);
-  border-radius: var(--radius-s);
-  padding: 6px 9px;
+  border: 1px solid var(--rule2);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
   min-width: 0;
 }
 textarea { width: 100%; resize: vertical; min-height: 68px; font-family: var(--sans); }
@@ -128,16 +85,21 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 }
 
 .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 12px;
   background: var(--surface); color: var(--ink);
-  border: 1px solid var(--border-firm); border-radius: var(--radius-s);
-  padding: 6px 11px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--rule2); border-radius: var(--radius-control);
+  font-size: 13px; font-weight: 550; cursor: pointer; white-space: nowrap;
+  text-decoration: none;
 }
-.btn:hover { background: var(--surface-2); }
-.btn.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
-.btn.primary:hover { filter: brightness(1.07); }
-.btn.icon { padding: 6px 9px; }
-.btn.small { padding: 3px 8px; font-size: 12px; }
-.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn:hover { background: var(--sunken); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink2); }
+.btn.ghost:hover { background: var(--sunken); color: var(--ink); }
+.btn.icon { padding: 0 9px; }
+.btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
 
 /* ------------------------------------------------------------------ tabs */
 
@@ -148,13 +110,15 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 }
 .tab {
   background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 9px 11px; cursor: pointer; color: var(--ink-2); white-space: nowrap;
+  padding: 10px 12px; cursor: pointer; color: var(--ink2);
+  white-space: nowrap; font-size: 13.5px; font-weight: 550;
 }
 .tab:hover { color: var(--ink); }
-.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--series-1); font-weight: 600; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 650; }
 .tab .count {
-  font: 11px/1 var(--sans); color: var(--muted);
-  background: var(--surface-2); border-radius: 999px; padding: 2px 6px; margin-left: 5px;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 11.5px; color: var(--ink3);
+  background: var(--sunken); border-radius: 999px; padding: 2px 6px; margin-left: 6px;
 }
 
 /* ------------------------------------------------------------------ view */
@@ -170,8 +134,8 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 .section-head .grow { flex: 1 1 auto; }
 
 .card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 14px;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius-card); padding: 14px;
 }
 .empty { color: var(--muted); padding: 18px; text-align: center; border: 1px dashed var(--border-firm); border-radius: var(--radius); }
 
@@ -180,7 +144,7 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 10px; }
 .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 13px; }
 .kpi .label { font-size: 12px; color: var(--ink-2); }
-.kpi .value { font-size: 26px; font-weight: 600; margin-top: 3px; letter-spacing: -.01em; }
+.kpi .value { font-size: 28px; font-weight: 600; margin-top: 3px; letter-spacing: -.015em; }
 .kpi .note { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
 /* ----------------------------------------------------------------- meter */
@@ -204,42 +168,50 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 
 /* --------------------------------------------------------------- tables */
 
-table.grid { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
-table.grid th, table.grid td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
-table.grid th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; background: var(--surface-2); }
-table.grid tr:last-child td { border-bottom: 0; }
-table.grid tbody tr:hover { background: var(--surface-2); }
-table.grid td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+table.grid {
+  width: 100%; border-collapse: collapse;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius-card); overflow: hidden;
+}
+table.grid th, table.grid td {
+  padding: var(--row-pad) 12px; text-align: left;
+  border-top: 1px solid var(--rule); vertical-align: top;
+}
+table.grid thead tr:first-child th { border-top: 0; }
+table.grid th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink3); font-weight: 650; background: transparent;
+}
+table.grid tbody tr:hover { background: var(--sunken); }
+table.grid td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 table.grid .id { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .row-link { cursor: pointer; }
 
 /* --------------------------------------------------------------- badges */
 
+/* A pill carries a fact (points, area, target). Status never rides a pill
+   alone — that is what the drawn glyph + the ledger's word are for. */
 .badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; padding: 2px 7px; border-radius: 999px;
-  background: var(--surface-2); color: var(--ink-2); white-space: nowrap;
-  border: 1px solid var(--border);
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 20px; padding: 0 7px; border-radius: 10px;
+  font-size: 11.5px; font-weight: 550; white-space: nowrap;
+  background: var(--sunken); color: var(--ink2); border: 0;
 }
-/* Status colour never travels alone: each badge carries its glyph and word. */
-.badge.good     { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
-.badge.warning  { color: var(--ink); border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
-.badge.critical { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, transparent); }
-.badge.accent   { color: var(--series-1); border-color: color-mix(in srgb, var(--series-1) 40%, transparent); }
+.badge.good     { background: var(--good-soft);    color: var(--good); }
+.badge.warning  { background: var(--warn-soft);    color: var(--warn); }
+.badge.serious  { background: var(--serious-soft); color: var(--serious); }
+.badge.critical { background: var(--crit-soft);    color: var(--crit); }
+.badge.accent   { background: var(--accent-soft);  color: var(--accent); }
+.badge.outline  { background: transparent; box-shadow: inset 0 0 0 1px var(--rule2); color: var(--ink2); }
 
 .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
 /* ---------------------------------------------------------------- board */
 
 .board { display: grid; grid-template-columns: repeat(5, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; }
-.column { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px; min-width: 190px; }
-.column > h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); display: flex; justify-content: space-between; margin-bottom: 8px; }
-.column > h3 .n { color: var(--muted); font-variant-numeric: tabular-nums; }
-.column.drop { outline: 2px dashed var(--series-1); outline-offset: -3px; }
-
-.ticket {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-s); padding: 9px; margin-bottom: 7px; cursor: grab;
+.column {
+  background: var(--sunken); border: 1px solid var(--rule);
+  border-radius: var(--radius-card); padding: 10px; min-width: 190px;
 }
 .ticket:last-child { margin-bottom: 0; }
 .ticket:hover { border-color: var(--border-firm); }
@@ -252,8 +224,9 @@ table.grid .id { font-family: var(--mono); font-size: 12px; white-space: nowrap;
 
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .item {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 11px 13px; display: flex; gap: 12px; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  padding: var(--row-pad) 14px; display: flex; gap: 12px; align-items: flex-start;
 }
 .item .grow { flex: 1 1 auto; min-width: 0; }
 .item .when { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -346,9 +319,9 @@ pre.source {
 /* ------------------------------------------------------- command sheet */
 
 .cmdbtn {
-  font: 12px var(--mono);
-  background: var(--surface-2); color: var(--series-1);
-  border: 1px solid var(--border); border-radius: 5px;
+  font-family: var(--mono); font-size: 12px;
+  background: var(--sunken); color: var(--accent);
+  border: 1px solid var(--rule); border-radius: 6px;
   padding: 3px 7px; cursor: pointer; white-space: nowrap;
 }
 .cmdbtn:hover { border-color: var(--series-1); }
@@ -384,7 +357,7 @@ pre.source {
 /* An id written inside ledger prose opens that entry instead of 404-ing on a
    .md path the browser cannot follow. */
 .idlink {
-  font: 12px var(--mono); color: var(--series-1);
+  font-family: var(--mono); font-size: 12px; color: var(--accent);
   background: none; border: 0; border-bottom: 1px dotted currentColor;
   padding: 0; cursor: pointer;
 }
@@ -422,3 +395,63 @@ table.grid.sprints td .hint { margin-top: 2px; }
   color: var(--critical); font-weight: 650; white-space: nowrap;
 }
 .blocked-reason { color: var(--ink-2); }
+
+/* =======================================================================
+   State glyphs — shape = entity, fill = progress, mark = exception.
+   Drawn, never emoji. The ledger's own token rides along as a title.
+   ======================================================================= */
+
+.st {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--ink2); white-space: nowrap;
+}
+.st > svg { flex: none; }
+.st-word { font-weight: 550; color: var(--ink); }
+/* the board column, divided from the lifecycle state by a hairline */
+.st-sub {
+  padding-left: 7px; border-left: 1px solid var(--rule2);
+  color: var(--ink); font-weight: 550;
+}
+.st-ready    { color: var(--accent); }
+.st-motion   { color: var(--accent); }
+.st-done     { color: var(--good); }
+.st-paused   { color: var(--warn); }
+.st-dropped  { color: var(--ink3); }
+.st-draft    { color: var(--ink3); }
+.st-triaged  { color: var(--ink2); }
+.st-confirmed{ color: var(--serious); }
+
+/* Priority — three ascending bars. The word is in aria-label and the ledger's
+   emoji in the title, so the shape never carries it alone. */
+.prio { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 12px; }
+.prio i { display: block; width: 3px; background: currentColor; border-radius: 1px; }
+.prio i:nth-child(1) { height: 5px; }
+.prio i:nth-child(2) { height: 8.5px; }
+.prio i:nth-child(3) { height: 12px; }
+.prio .off { opacity: .22; }
+.prio-high { color: var(--crit); }
+.prio-medium { color: var(--warn); }
+.prio-low { color: var(--ink3); }
+
+/* Severity — word pills, never a bare colour */
+.sev { text-transform: capitalize; }
+.sev-critical { background: var(--crit-soft);    color: var(--crit); }
+.sev-major    { background: var(--serious-soft); color: var(--serious); }
+.sev-minor    { background: var(--sunken);       color: var(--ink2); }
+.sev-trivial  { background: transparent; box-shadow: inset 0 0 0 1px var(--rule2); color: var(--ink2); }
+
+/* Blocked — icon + the ledger's reason. No age: it is not stored. */
+.blocked { border-left: 1px solid var(--rule); border-style: dashed; border-color: var(--crit); }
+.ticket.is-blocked { border-style: dashed; border-color: var(--crit); }
+.blocked-label { color: var(--crit); }
+.mark-blocked { display: inline-flex; align-items: center; gap: 5px; color: var(--crit); }
+
+/* Dependency chip */
+.dep { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11.5px; }
+.dep-met { color: var(--good); }
+
+/* a state heading inherits the h2 size but keeps the glyph at 14px */
+.section-head h2 .st { font-size: inherit; color: inherit; gap: 8px; }
+.section-head h2 .st-word { font-weight: inherit; color: inherit; }
+.ticket .t-id { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+.ticket .t-id .st { gap: 0; }

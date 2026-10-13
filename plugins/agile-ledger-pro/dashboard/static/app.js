@@ -29,7 +29,6 @@ function el(tag, attrs, ...children) {
     if (value === null || value === undefined || value === false) continue;
     if (key === 'class') node.className = value;
     else if (key === 'text') node.textContent = value;
-    else if (key === 'html') node.innerHTML = value;          // literals only
     else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
     else if (key === 'dataset') Object.assign(node.dataset, value);
     else node.setAttribute(key, value === true ? '' : value);
@@ -353,13 +352,192 @@ function badge(text, tone) {
   return el('span', { class: `badge${tone ? ' ' + tone : ''}`, text });
 }
 
-function stateBadge(value) {
-  const text = show(value);
-  const tone = /Delivered|Fixed|Done/.test(text) ? 'good'
-    : /Blocked|Discarded|Won/.test(text) ? 'critical'
-    : /Sprint|Progress|Confirmed/.test(text) ? 'accent'
-    : '';
-  return badge(text, tone);
+/* ------------------------------------------------------- state glyphs ----
+ * Shape says what kind of thing it is, fill says how far along, an extra mark
+ * says something is wrong. Drawn as SVG rather than emoji so the UI can set
+ * weight and colour — but the ledger's own token (e.g. "✅ Ready") is always
+ * on the title, because that is the word actually written in the file, and it
+ * is what tells "✅ Ready" apart from "✅ Delivered".
+ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svg(tag, attrs, ...kids) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v !== null && v !== undefined) node.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid) node.append(kid);
+  return node;
+}
+
+const OUTER = {
+  story: () => svg('circle', { cx: 7, cy: 7, r: 5.5, fill: 'none',
+    stroke: 'currentColor', 'stroke-width': 1.5 }),
+  bug: () => svg('path', { d: 'M7 1.25 12.75 7 7 12.75 1.25 7Z', fill: 'none',
+    stroke: 'currentColor', 'stroke-width': 1.5, 'stroke-linejoin': 'round' }),
+  epic: () => svg('rect', { x: 1.75, y: 1.75, width: 10.5, height: 10.5, rx: 2.5,
+    fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }),
+};
+
+// The ring's fill is the board column — how far round the clock the work is.
+const COLUMN_FILL = {
+  story: {
+    'To Do': 'M7 5.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 1 1 0-3Z',
+    'In Progress': 'M7 7V3.25A3.75 3.75 0 0 1 10.75 7Z',
+    'In Review': 'M7 7V3.25A3.75 3.75 0 0 1 7 10.75Z',
+    'In PR': 'M7 7V3.25A3.75 3.75 0 1 1 3.25 7Z',
+    'Done': 'M7 3.25a3.75 3.75 0 1 1 0 7.5a3.75 3.75 0 1 1 0-7.5Z',
+  },
+  bug: {
+    'To Do': 'M7 5.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 1 1 0-3Z',
+    'In Progress': 'M7 4 10 7H7Z',
+    'In Review': 'M7 4 10 7 7 10Z',
+    'In PR': 'M7 4 10 7 7 10 4 7 7 7Z',
+    'Done': 'M7 4 10 7 7 10 4 7Z',
+  },
+};
+
+const CHECK = () => svg('path', { d: 'M4.4 7.2 6.2 9 9.7 5.2', fill: 'none',
+  stroke: 'var(--surface)', 'stroke-width': 1.6,
+  'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+const BARS = () => svg('path', { d: 'M5 4.75h1.4v4.5H5ZM7.6 4.75H9v4.5H7.6Z',
+  fill: 'currentColor' });
+const SLASH = (d) => svg('path', { d, fill: 'none', stroke: 'currentColor',
+  'stroke-width': 1.5, 'stroke-linecap': 'round' });
+
+/** Tone class per state — colour supports the glyph, never replaces the word. */
+const TONE = {
+  story: { Draft: 'draft', Ready: 'ready', 'In Sprint': 'motion',
+    Delivered: 'done', Paused: 'paused', Discarded: 'dropped' },
+  bug: { Inbox: 'draft', Triaged: 'triaged', Confirmed: 'confirmed',
+    'In Sprint': 'motion', Fixed: 'done', Deferred: 'paused', "Won't fix": 'dropped' },
+  epic: { Proposed: 'draft', 'In Progress': 'motion', Done: 'done',
+    Paused: 'paused', Discarded: 'dropped' },
+};
+
+const DASHED = { story: 'Draft', bug: 'Inbox', epic: 'Proposed' };
+
+function glyph(entity, state, column) {
+  const kids = [];
+  const dashed = DASHED[entity] === state;
+
+  if (state === 'Delivered' || state === 'Fixed' || (entity === 'epic' && state === 'Done')) {
+    if (entity === 'story') kids.push(svg('circle', { cx: 7, cy: 7, r: 6.25, fill: 'currentColor' }));
+    else if (entity === 'bug') kids.push(svg('path', { d: 'M7 .5 13.5 7 7 13.5 .5 7Z', fill: 'currentColor' }));
+    else kids.push(svg('rect', { x: 1, y: 1, width: 12, height: 12, rx: 3, fill: 'currentColor' }));
+    kids.push(CHECK());
+  } else {
+    const outer = OUTER[entity]();
+    if (dashed) outer.setAttribute('stroke-dasharray', '2.6 1.9');
+    kids.push(outer);
+
+    if (state === 'In Sprint' && column && COLUMN_FILL[entity]) {
+      const d = COLUMN_FILL[entity][column];
+      if (d) kids.push(svg('path', { d, fill: 'currentColor' }));
+    }
+    if (entity === 'bug' && state === 'Confirmed') {
+      kids.push(svg('circle', { cx: 7, cy: 7, r: 1.6, fill: 'currentColor' }));
+    }
+    if (entity === 'epic' && state === 'In Progress') {
+      kids.push(svg('path', { d: 'M7 7V3.25A3.75 3.75 0 0 1 10.75 7Z', fill: 'currentColor' }));
+    }
+    if (state === 'Paused' || state === 'Deferred') kids.push(BARS());
+    if (state === 'Discarded') kids.push(SLASH('M3.2 10.8 10.8 3.2'));
+    if (state === "Won't fix") kids.push(SLASH('M4.6 9.4 9.4 4.6'));
+  }
+  return svg('svg', { width: 14, height: 14, viewBox: '0 0 14 14',
+    'aria-hidden': 'true', focusable: 'false' }, kids);
+}
+
+/** The ledger's own token for a state, straight from /api/workspace. */
+function ledgerWord(entity, state) {
+  const labels = state && state_labels();
+  return (labels && labels[entity] && labels[entity][state]) || show(state);
+}
+
+function state_labels() {
+  return state.workspace && state.workspace.vocabulary && state.workspace.vocabulary.labels;
+}
+
+/** Which board column an item is sitting in right now, if any. */
+function boardColumn(id) {
+  const board = state.repo && state.repo.sprint && state.repo.sprint.board;
+  if (!board) return '';
+  for (const [column, items] of Object.entries(board)) {
+    if (items.some((i) => i.id === id)) return column;
+  }
+  return '';
+}
+
+/**
+ * The two-state chip: glyph, lifecycle word, and — only while the item is in a
+ * sprint — a hairline and its board column. One object for the two states the
+ * ledger really keeps.
+ */
+function stateChip(entity, stateName, options) {
+  const opts = options || {};
+  const name = show(stateName);
+  const column = opts.column !== undefined ? opts.column : '';
+  const chip = el('span', { class: `st st-${TONE[entity] && TONE[entity][name] || 'draft'}`,
+    title: ledgerWord(entity, name) });
+  chip.append(glyph(entity, name, column));
+  chip.append(el('span', { class: 'st-word', text: name }));
+  if (column) chip.append(el('span', { class: 'st-sub', text: column }));
+  return chip;
+}
+
+/** Priority as ascending bars; the word and the ledger token come with it. */
+function priorityMark(value) {
+  const vocab = (state.workspace && state.workspace.vocabulary.priorities) || [];
+  const entry = vocab.find((p) => p.value === String(value || '').trim());
+  if (!entry) return el('span', { class: 'hint', text: EMPTY });
+  const rank = vocab.indexOf(entry);              // 0 = highest
+  const lit = vocab.length - rank;                // high lights all three
+  const node = el('span', {
+    class: `prio prio-${entry.name.toLowerCase()}`,
+    title: entry.value, role: 'img', 'aria-label': `${entry.name} priority`,
+  });
+  for (let i = 1; i <= vocab.length; i++) {
+    node.append(el('i', { class: i <= lit ? '' : 'off' }));
+  }
+  return node;
+}
+
+/** A section heading that carries its state's glyph, so the group header is
+ *  itself the glyph + word pairing rather than a bare string. */
+function stateHeading(entity, stateName) {
+  const name = show(stateName);
+  return el('span', { class: `st st-${(TONE[entity] || {})[name] || 'draft'}`,
+      style: 'font-size:inherit', title: ledgerWord(entity, name) },
+    glyph(entity, name, ''),
+    el('span', { class: 'st-word', style: 'font-size:inherit', text: name }));
+}
+
+/** An epic index line stores the ledger's label ("✅ Ready"); reduce to the word. */
+function indexState(label) {
+  const text = show(label);
+  const word = text.replace(/^[^\p{L}]*/u, '').trim();
+  return word || 'Draft';
+}
+
+/** The blocked mark: icon plus the ledger's word, never colour alone. */
+function blockedMark(reason) {
+  const node = el('span', { class: 'mark-blocked', title: 'Blocked' });
+  node.append(svg('svg', { width: 13, height: 13, viewBox: '0 0 14 14',
+    'aria-hidden': 'true', focusable: 'false' }, [
+    svg('circle', { cx: 7, cy: 7, r: 5.6, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5 }),
+    svg('path', { d: 'M3.6 7h6.8', stroke: 'currentColor', 'stroke-width': 1.5, 'stroke-linecap': 'round' }),
+  ]));
+  node.append(el('span', { style: 'font-size:11.5px;font-weight:550',
+    text: isSet(reason) ? `Blocked · ${reason}` : 'Blocked' }));
+  return node;
+}
+
+/** Severity as a word pill — never a bare colour. */
+function severityPill(value) {
+  const name = show(value);
+  if (name === EMPTY) return el('span', { class: 'hint', text: EMPTY });
+  return el('span', { class: `badge sev sev-${name.toLowerCase()}`, text: name });
 }
 
 function kpi(label, value, note) {
@@ -378,8 +556,11 @@ function meter(done, total) {
 }
 
 function sectionHead(title, sub, ...actions) {
+  const heading = el('h2', {});
+  if (title instanceof Node) heading.append(title);
+  else heading.textContent = title;
   return el('div', { class: 'section-head' },
-    el('h2', { text: title }),
+    heading,
     sub ? el('span', { class: 'sub', text: sub }) : null,
     el('span', { class: 'grow' }), ...actions);
 }
@@ -492,7 +673,7 @@ VIEWS.board = () => {
                 onclick: () => openItem(b.id) }, b.id),
               el('span', { class: 'blocked-title', text: show(b.title) })),
             el('div', { class: 'blocked-why' },
-              el('span', { class: 'blocked-label', text: 'Blocked by' }),
+              el('span', { class: 'blocked-label' }, blockedMark()),
               prose(b.reason || b.text, 'span', { class: 'blocked-reason' }))),
           el('button', { class: 'btn small', type: 'button',
             onclick: () => act('set_blocked', { item_id: b.id, blocked: false }, 'Unblocked') },
@@ -513,13 +694,21 @@ function idChips(ids) {
 }
 
 function ticket(item, column, blocked) {
-  const node = el('div', { class: 'ticket', draggable: 'true', dataset: { id: item.id } },
-    el('div', { class: 't-id', text: item.id }),
+  const entity = item.id.startsWith('BUG') ? 'bug' : 'story';
+  const node = el('div', { class: `ticket${blocked ? ' is-blocked' : ''}`,
+      draggable: 'true', dataset: { id: item.id } },
+    el('div', { class: 't-id' },
+      // Shape = story or bug, fill = how far round the board it is. The column
+      // heading above supplies the word, so this is never colour alone.
+      el('span', { class: 'st st-motion', style: 'gap:5px',
+        title: `${ledgerWord(entity, 'In Sprint')} · ${column}` },
+        glyph(entity, 'In Sprint', column)),
+      el('span', { text: item.id })),
     el('div', { class: 't-title', text: show(item.title) }),
     el('div', { class: 't-foot' },
       el('span', { text: isSet(item.assignee) ? item.assignee : 'unassigned' }),
       el('span', { class: 'chips' },
-        blocked ? badge('🚧 Blocked', 'critical') : null,
+        blocked ? blockedMark() : null,
         isSet(item.points) ? badge(`${item.points} pts`) : null)));
 
   node.addEventListener('dragstart', (e) => {
@@ -582,7 +771,7 @@ VIEWS.epics = () => {
       el('div', { class: 'epic-head' },
         el('div', { class: 'grow' },
           el('div', { class: 'chips' },
-            el('strong', { text: epic.id }), stateBadge(epic.state),
+            el('span', { class: 'id', text: epic.id }), stateChip('epic', epic.state),
             isSet(epic.target) ? badge(`target ${epic.target}`) : null,
             isSet(epic.area) ? badge(epic.area) : null),
           el('h3', { style: 'margin-top:6px', text: show(epic.title) }),
@@ -603,8 +792,9 @@ VIEWS.epics = () => {
           return el('tr', { class: 'row-link' },
             el('td', { class: 'id', text: item.id }),
             el('td', { text: show(item.title) }),
-            el('td', {}, stateBadge(item.state)),
-            el('td', { text: show(item.priority) }),
+            el('td', {}, stateChip('story', indexState(item.state),
+              { column: boardColumn(item.id) })),
+            el('td', {}, priorityMark(item.priority)),
             el('td', { class: 'num', text: show(item.points) }),
             el('td', { text: show(item.assignee) }),
             el('td', {}, detailed
@@ -632,8 +822,8 @@ function storyTable(stories) {
       el('tr', { class: 'row-link', onclick: () => openItem(story.id) },
         el('td', { class: 'id', text: story.id }),
         el('td', { text: show(story.title) }),
-        el('td', {}, stateBadge(story.state)),
-        el('td', { text: show(story.priority) }),
+        el('td', {}, stateChip('story', story.state, { column: boardColumn(story.id) })),
+        el('td', {}, priorityMark(story.priority)),
         el('td', { class: 'num', text: show(story.estimate) }),
         el('td', { class: 'id', text: show(story.parent) }),
         el('td', { text: show(story.assignee) })))));
@@ -649,10 +839,12 @@ VIEWS.stories = () => {
     .map((i) => ({ ...i, epic: e })));
   if (drafts.length) {
     wrap.append(el('section', { class: 'section' },
-      sectionHead('📝 Draft', `${drafts.length} — triaged, not yet detailed`),
+      sectionHead(stateHeading('story', 'Draft'),
+        `${drafts.length} — triaged, not yet detailed`),
       el('div', { class: 'stack' }, drafts.map((d) =>
         el('div', { class: 'item' },
           el('span', { class: 'id', text: d.id }),
+          stateChip('story', 'Draft'),
           el('div', { class: 'grow', text: show(d.title) }),
           badge(d.epic.id),
           el('button', { class: 'btn small primary', type: 'button',
@@ -664,7 +856,7 @@ VIEWS.stories = () => {
     if (!group.length) continue;
     const points = group.reduce((sum, s) => sum + num(s.estimate), 0);
     wrap.append(el('section', { class: 'section' },
-      sectionHead(name, `${group.length} · ${points} pts`),
+      sectionHead(stateHeading('story', name), `${group.length} · ${points} pts`),
       storyTable(group)));
   }
   return wrap;
@@ -681,7 +873,7 @@ VIEWS.bugs = () => {
     const group = repo.bugs.filter((b) => b.state === name && matchesPerson(b.assignee));
     if (!group.length) continue;
     wrap.append(el('section', { class: 'section' },
-      sectionHead(name, `${group.length}`),
+      sectionHead(stateHeading('bug', name), `${group.length}`),
       el('table', { class: 'grid' },
         el('thead', {}, el('tr', {},
           ['ID', 'Title', 'Sev', 'Pri', 'Relates to', 'Assignee'].map((h) => el('th', { text: h })))),
@@ -689,8 +881,8 @@ VIEWS.bugs = () => {
           el('tr', { class: 'row-link', onclick: () => openItem(bug.id) },
             el('td', { class: 'id', text: bug.id }),
             el('td', { text: show(bug.title) }),
-            el('td', { text: show(bug.severity) }),
-            el('td', { text: show(bug.priority) }),
+            el('td', {}, severityPill(bug.severity)),
+            el('td', {}, priorityMark(bug.priority)),
             el('td', { class: 'id', text: show(bug.relates_to) }),
             el('td', { text: show(bug.assignee) })))))));
   }
@@ -913,8 +1105,8 @@ function kvList(pairs) {
 function storyDetail(story) {
   const wrap = el('div', {});
   wrap.append(el('div', { class: 'chips', style: 'margin-bottom:10px' },
-    stateBadge(story.state),
-    isSet(story.priority) ? badge(story.priority) : null,
+    stateChip('story', story.state, { column: boardColumn(story.id) }),
+    priorityMark(story.priority),
     isSet(story.parent) ? badge(story.parent) : null));
   wrap.append(el('h3', { style: 'margin-bottom:12px', text: show(story.title) }));
 
@@ -958,9 +1150,9 @@ function storyDetail(story) {
 function bugDetail(bug) {
   const wrap = el('div', {});
   wrap.append(el('div', { class: 'chips', style: 'margin-bottom:10px' },
-    stateBadge(bug.state),
-    isSet(bug.severity) ? badge(`severity ${bug.severity}`) : null,
-    isSet(bug.priority) ? badge(bug.priority) : null));
+    stateChip('bug', bug.state, { column: boardColumn(bug.id) }),
+    severityPill(bug.severity),
+    priorityMark(bug.priority)));
   wrap.append(el('h3', { style: 'margin-bottom:12px', text: show(bug.title) }));
   wrap.append(el('div', { class: 'detail-block' },
     kvList([['Estimate', bug.estimate], ['Area', bug.area], ['Assignee', bug.assignee],
@@ -1384,6 +1576,9 @@ async function boot() {
     applyTheme(order[(order.indexOf(now) + 1) % order.length]);
   });
   document.getElementById('commit-btn').addEventListener('click', commitForm);
+  // No hash routing until Phase 2 — the mark just returns to the first view.
+  const brand = document.getElementById('brand');
+  if (brand) brand.addEventListener('click', () => goTo('overview'));
 
   for (const node of document.querySelectorAll('[data-close]')) {
     node.addEventListener('click', () => { closeModal(); closeDrawer(); });

@@ -3,17 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agile-Ledger Pro</title>
+<title>Agile Ledger Pro</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128202;</text></svg>">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="brand">
-    <span class="brand-mark" aria-hidden="true"></span>
-    <span class="brand-name">Agile-Ledger <b>Pro</b></span>
-  </div>
+  <button class="brand" type="button" id="brand" aria-label="Agile Ledger Pro — Overview">
+    <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" style="fill: var(--accent)"/>
+      <path d="M5.5 24 12.5 8V24M8.35 17.5H12.5M17.5 8V24H26.5" fill="none"
+            style="stroke: var(--on-accent)" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">Agile Ledger</span><span class="brand-pro">Pro</span>
+  </button>
 
   <label class="field inline">
     <span class="field-label">Project</span>
