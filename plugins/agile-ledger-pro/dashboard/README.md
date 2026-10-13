@@ -58,6 +58,12 @@ generated from the installed `commands/*.md` frontmatter, so the sheet always ma
 rather than a copy that goes stale. Each row copies its command on click; the ones the page can do
 carry a button that opens the right form.
 
+**Settings** is a screen of its own: everything the skill reads before it acts — this project's
+`Definitions.md` (your name, language, estimation scale, whether git may run in the code repo) and
+the ledger's `Config.md` (placement, default project, org, commit and push policy, branches) — plus
+the team's own Definition of Ready and Definition of Done. Saving writes the same keys a person
+would type, and leaves the comments and alignment in those files exactly where they were.
+
 **It never runs git in a code repo.** `/sync-main`, `/workspace-sync`, `/discover-repos`,
 `/register-repo`, `/init-ledger` and `/migrate-ledger` stay in the Claude Code session: they read
 git history, clone repositories, and propose reconstructed work that needs a human's judgement.

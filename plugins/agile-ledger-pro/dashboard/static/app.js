@@ -251,8 +251,94 @@ function textArea(name, value, placeholder, rows) {
   return node;
 }
 
-function dateInput(name, value) {
-  return el('input', { type: 'date', name, value: value || '' });
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+const parseDay = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || '')
+  ? new Date(`${s}T00:00:00`) : null);
+const fmtDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  + `-${String(d.getDate()).padStart(2, '0')}`;
+const prettyDay = (s) => {
+  const d = parseDay(s);
+  return d ? d.toLocaleDateString(undefined,
+    { day: 'numeric', month: 'short', year: 'numeric' }) : 'Pick a date';
+};
+
+/**
+ * A date field in the portal's own style: a control that looks like every
+ * other one, and a calendar on the same surface as the menus. The value rides
+ * on a hidden input so the form reads it like any other field.
+ */
+function dateInput(name, value, onChange) {
+  const anchor = el('span', { class: 'menu-anchor date-field' });
+  const hidden = el('input', { type: 'hidden', name, value: value || '' });
+  const button = el('button', { class: 'control date-btn', type: 'button',
+    'aria-haspopup': 'dialog' },
+    svg('svg', { width: 14, height: 14, viewBox: '0 0 16 16', 'aria-hidden': 'true' },
+      svg('rect', { x: 2.25, y: 3.25, width: 11.5, height: 10.5, rx: 2, fill: 'none',
+        stroke: 'currentColor', 'stroke-width': 1.4 }),
+      svg('path', { d: 'M2.25 6.5h11.5M5.5 2v2.5M10.5 2v2.5', stroke: 'currentColor',
+        'stroke-width': 1.4, 'stroke-linecap': 'round' })),
+    el('span', { class: 'date-text', text: prettyDay(value) }),
+    chevron());
+
+  const setValue = (iso) => {
+    hidden.value = iso;
+    button.querySelector('.date-text').textContent = prettyDay(iso);
+    if (onChange) onChange(iso);
+  };
+  button.addEventListener('click', () => openCalendar(button, hidden.value, setValue));
+  anchor.append(button, hidden);
+  anchor.setValue = setValue;
+  anchor.getValue = () => hidden.value;
+  return anchor;
+}
+
+function openCalendar(anchor, value, onPick) {
+  closeMenu();
+  const selected = parseDay(value) || new Date();
+  let cursor = new Date(selected.getFullYear(), selected.getMonth(), 1);
+
+  const panel = el('div', { class: 'menu cal', role: 'dialog', 'aria-label': 'Choose a date' });
+  panel.anchor = anchor;
+  const draw = () => {
+    panel.replaceChildren();
+    panel.append(el('div', { class: 'cal-head' },
+      el('button', { class: 'cal-nav', type: 'button', 'aria-label': 'Previous month',
+        onclick: () => { cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1); draw(); } }, '‹'),
+      el('span', { class: 'cal-month',
+        text: `${MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}` }),
+      el('button', { class: 'cal-nav', type: 'button', 'aria-label': 'Next month',
+        onclick: () => { cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1); draw(); } }, '›')));
+
+    const grid = el('div', { class: 'cal-grid' });
+    for (const d of WEEKDAYS) grid.append(el('span', { class: 'cal-wd', text: d }));
+    // Monday-first, the way a sprint is usually planned.
+    const lead = (cursor.getDay() + 6) % 7;
+    for (let i = 0; i < lead; i++) grid.append(el('span', {}));
+    const days = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+    const todayIso = fmtDay(new Date());
+    for (let day = 1; day <= days; day++) {
+      const iso = fmtDay(new Date(cursor.getFullYear(), cursor.getMonth(), day));
+      grid.append(el('button', {
+        class: `cal-day${iso === value ? ' on' : ''}${iso === todayIso ? ' today' : ''}`,
+        type: 'button', onclick: () => { closeMenu(); onPick(iso); },
+      }, String(day)));
+    }
+    panel.append(grid);
+    panel.append(el('div', { class: 'cal-foot' },
+      el('button', { class: 'btn small ghost', type: 'button',
+        onclick: () => { closeMenu(); onPick(fmtDay(new Date())); } }, 'Today')));
+  };
+  draw();
+  const host = (anchor.closest && anchor.closest('.menu-anchor')) || anchor.parentNode;
+  host.append(panel);
+  openMenu = panel;
+  setTimeout(() => {
+    document.addEventListener('click', onMenuOutside, true);
+    document.addEventListener('keydown', onMenuKey, true);
+  }, 0);
 }
 
 const isoDay = (offset) => {
@@ -264,10 +350,42 @@ const isoDay = (offset) => {
 /** Two date pickers that write the ledger's own range: "2026-03-16 → 2026-03-27". */
 function dateRangeFields(existing) {
   const [from, to] = splitRange(existing || '');
-  return el('div', { class: 'form-grid' },
-    field('Starts', dateInput('date_from', from || isoDay(0))),
-    field('Ends', dateInput('date_to', to || isoDay(13)),
-      'two weeks by default — change either date'));
+  const start = from || isoDay(0);
+  const end = to || isoDay(13);
+
+  const note = el('span', { class: 'hint' });
+  const endField = dateInput('date_to', end, () => paint());
+  // Moving the start carries the end with it, keeping whatever length the
+  // sprint already had — two weeks until someone changes it.
+  const startField = dateInput('date_from', start, (iso) => {
+    const a = parseDay(iso);
+    const b = parseDay(endField.getValue());
+    const length = a && b ? Math.max(1, Math.round((b - a) / 86400000)) : 13;
+    const keep = parseDay(startField.dataset.previous || start);
+    const span = keep && b ? Math.max(1, Math.round((b - keep) / 86400000)) : 13;
+    if (a) endField.setValue(fmtDay(new Date(a.getTime() + (span || length) * 86400000)));
+    startField.dataset.previous = iso;
+    paint();
+  });
+  startField.dataset.previous = start;
+
+  function paint() {
+    const a = parseDay(startField.getValue());
+    const b = parseDay(endField.getValue());
+    if (!a || !b) { note.textContent = ''; return; }
+    const days = Math.round((b - a) / 86400000) + 1;
+    note.textContent = days > 0
+      ? `${days} days${days === 14 ? ' · two weeks' : ''}`
+      : 'the end is before the start';
+  }
+  paint();
+
+  return el('div', { class: 'form-row' },
+    el('span', { class: 'field-label' }, document.createTextNode('Dates'), note),
+    el('div', { class: 'date-range' },
+      startField,
+      el('span', { class: 'date-arrow', 'aria-hidden': 'true', text: '→' }),
+      endField));
 }
 
 const joinRange = (from, to) =>
@@ -1300,6 +1418,10 @@ const LEDGER_DESTINATIONS = [
     icon: 'M4 2.5h5l3 3v8h-8ZM9 2.5v3h3' },
   { route: 'commands', label: 'Commands', view: 'commands',
     icon: 'M4 6 6.5 8.5 4 11M8.5 11.5H12' },
+  { route: 'settings', label: 'Settings', view: 'settings',
+    icon: 'M8 5.75a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5ZM8 2v1.6M8 12.4V14'
+        + 'M2 8h1.6M12.4 8H14M3.75 3.75l1.15 1.15M11.1 11.1l1.15 1.15'
+        + 'M12.25 3.75 11.1 4.9M4.9 11.1l-1.15 1.15' },
 ];
 
 const ALL_DESTINATIONS = [...DESTINATIONS, ...LEDGER_DESTINATIONS];
@@ -1330,7 +1452,7 @@ const VIEW_ROUTE = {
   epics: 'backlog', stories: 'backlog', bugs: 'backlog', backlog: 'backlog',
   board: 'sprint', sprint: 'sprint',
   releases: 'ship', sprints: 'ship', ship: 'ship',
-  health: 'health', files: 'files', commands: 'commands',
+  health: 'health', files: 'files', commands: 'commands', settings: 'settings',
 };
 
 function goTo(route) {
@@ -2179,6 +2301,25 @@ const LANES_KEY = 'sprint.lanes';
 const DENSITY_KEY = 'backlog.density';
 const GROUP_KEY = 'backlog.group';
 
+/** A filter chip that opens the dashboard's own menu, not the OS dropdown. */
+function chipMenu(label, name, rows, current, onPick, on) {
+  const anchor = el('span', { class: 'menu-anchor' });
+  const button = el('button', {
+    class: `filter${on ? ' filter-on' : ''}`, type: 'button',
+    'aria-haspopup': 'listbox', 'aria-label': name,
+  }, el('span', { text: label }), chevron());
+  button.addEventListener('click', () => showMenu(button, name, rows, current, onPick));
+  anchor.append(button);
+  return anchor;
+}
+
+function chevron() {
+  return svg('svg', { width: 11, height: 11, viewBox: '0 0 12 12',
+    'aria-hidden': 'true', class: 'chev-icon' },
+    svg('path', { d: 'M3 4.75 6 7.75 9 4.75', fill: 'none', stroke: 'currentColor',
+      'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+}
+
 function segControl(label, options, current, onPick) {
   return el('div', { class: 'seg', role: 'group', 'aria-label': label },
     options.map(([value, text]) => el('button', { type: 'button',
@@ -2564,15 +2705,11 @@ VIEWS.backlog = () => {
   };
   for (const key of FILTER_KEYS) {
     const value = filters[key];
-    const select = el('select', { class: `filter${value ? ' filter-on' : ''}`,
-      'aria-label': key,
-      onchange: (e) => { remember(`backlog.f.${key}`, e.target.value); render(); } },
-      opts[key].map(([v, label]) => {
-        const o = el('option', { value: v, text: label });
-        if (v === value) o.selected = true;
-        return o;
-      }));
-    bar.append(select);
+    const rows = opts[key].map(([v, label]) => ({ value: v, label }));
+    const chosen = rows.find((r) => r.value === value);
+    const label = value && chosen ? chosen.label : rows[0].label;
+    bar.append(chipMenu(label, key, rows, value,
+      (v) => { remember(`backlog.f.${key}`, v); render(); }, !!value));
   }
   bar.append(el('span', { class: 'grow' }));
   bar.append(el('span', { class: 'hint', text: 'Group' }));
@@ -3188,6 +3325,160 @@ function copyReleaseNotes() {
     () => toast('warn', 'Could not reach the clipboard', 'Copy them from Files instead.'));
 }
 
+/* ================================================================= Settings
+ * Everything the skill lets you configure, in the two files that hold it: this
+ * project's Definitions.md and the ledger root's Config.md. The forms write
+ * the same keys a person would type, leaving the comments where they were.
+ */
+
+const PROJECT_SETTINGS = [
+  { key: 'Me', label: 'Me', hint: 'the name /my-work uses when none is given' },
+  { key: 'language', label: 'Language', hint: 'the language the ledger is written in' },
+  { key: 'estimation', label: 'Estimation scale',
+    options: ['fibonacci', 'tshirt', 'linear'], hint: 'the story-point scale' },
+  { key: 'git_execution', label: 'Git in this code repo', options: ['off', 'on'],
+    hint: 'off generates branch and PR text only; on allows git, never a merge' },
+];
+
+const LEDGER_SETTINGS = [
+  { key: 'layout', label: 'Placement', options: ['nested', 'flat'],
+    hint: 'nested = its own repo, one folder per project; flat = inside this project' },
+  { key: 'default_repo', label: 'Default project',
+    hint: 'which folder commands act on from the ledger root' },
+  { key: 'org', label: 'GitHub org', hint: 'scanned by /discover-repos' },
+  { key: 'clone_target', label: 'Clone target', hint: 'where new repos are cloned' },
+  { key: 'ledger_commit', label: 'Commits in the ledger',
+    options: ['confirm', 'auto', 'off'], hint: 'confirm offers one commit per command' },
+  { key: 'ledger_push', label: 'Pushing the ledger', options: ['off', 'confirm'],
+    hint: 'never automatic; every push is confirmed as it happens' },
+  { key: 'ledger_branch', label: 'Ledger branch', hint: 'where ledger commits land' },
+  { key: 'git_execution', label: 'Git in code repos', options: ['off', 'on'],
+    hint: 'the ledger-wide default; a project can override it' },
+  { key: 'setup_branch', label: 'Setup branch',
+    hint: 'used in a code repo to remove a migrated folder' },
+];
+
+VIEWS.settings = () => {
+  const repo = state.repo;
+  const wrap = el('div', {});
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: 'Settings' }),
+      el('p', { class: 'page-sub',
+        text: 'what the skill reads before it does anything, and the two files that hold it' }))));
+
+  wrap.append(settingsCard(
+    'This project', `${repo.slug}/Definitions.md`, PROJECT_SETTINGS,
+    repo.definitions.config || {},
+    (values) => act('update_project_config', { values }, 'Project settings saved')));
+
+  wrap.append(settingsCard(
+    'This ledger', 'Config.md', LEDGER_SETTINGS,
+    (state.workspace && state.workspace.config) || {},
+    async (values) => {
+      await act('update_ledger_config', { values }, 'Ledger settings saved');
+      await refreshWorkspaceQuietly();
+    }));
+
+  wrap.append(checklistCard('Definition of Ready', 'ready',
+    repo.definitions.definition_of_ready || [],
+    'What a story needs before it can be pulled into a sprint.'));
+  wrap.append(checklistCard('Definition of Done', 'done',
+    repo.definitions.definition_of_done || [],
+    'What has to be true before a story can move to Done.'));
+  return wrap;
+};
+
+function settingsCard(title, file, fields, values, save) {
+  const card = el('div', { class: 'card setcard' });
+  const form = el('form', { class: 'setform' });
+  card.append(el('div', { class: 'gh' },
+    el('h2', { text: title }),
+    el('span', { class: 'c mono', text: file })));
+
+  for (const spec of fields) {
+    const current = values[spec.key];
+    const row = el('div', { class: 'setrow' });
+    row.append(el('div', { class: 'setlabel' },
+      el('span', { class: 'setlabel-main', text: spec.label }),
+      el('span', { class: 'setlabel-key mono', text: spec.key })));
+    const control = spec.options
+      ? pickField(spec.key, spec.options, current)
+      : el('input', { class: 'control', type: 'text', name: spec.key,
+          value: isSet(current) ? current : '' });
+    row.append(el('div', { class: 'setcontrol' }, control,
+      spec.hint ? el('span', { class: 'hint', text: spec.hint }) : null));
+    form.append(row);
+  }
+
+  const status = el('span', { class: 'hint grow' });
+  form.append(el('div', { class: 'setfoot' },
+    status,
+    el('button', { class: 'btn primary', type: 'submit' }, 'Save')));
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const out = {};
+    for (const [k, v] of new FormData(form).entries()) out[k] = v;
+    status.textContent = 'Saving...';
+    try { await save(out); } finally { status.textContent = ''; }
+  };
+  card.append(form);
+  return card;
+}
+
+/** A menu-backed picker writing into a hidden input, like the date field. */
+function pickField(name, options, value) {
+  const anchor = el('span', { class: 'menu-anchor' });
+  const hidden = el('input', { type: 'hidden', name,
+    value: isSet(value) ? value : options[0] });
+  const button = el('button', { class: 'control pick', type: 'button',
+    'aria-haspopup': 'listbox' },
+    el('span', { class: 'pick-text', text: hidden.value }), chevron());
+  button.addEventListener('click', () => showMenu(button, name,
+    options.map((o) => ({ value: o, label: o })), hidden.value, (picked) => {
+      hidden.value = picked;
+      const text = button.querySelector('.pick-text');
+      if (text) text.textContent = picked;
+    }));
+  anchor.append(button, hidden);
+  return anchor;
+}
+
+function checklistCard(title, which, items, blurb) {
+  const card = el('div', { class: 'card setcard' });
+  card.append(el('div', { class: 'gh' },
+    el('h2', { text: title }),
+    el('span', { class: 'c mono', text: `${items.length} checks` })));
+  card.append(el('p', { class: 'hint set-blurb', text: blurb }));
+
+  const list = el('div', { class: 'checkedit' });
+  const addRow = (text) => {
+    const row = el('div', { class: 'checkrow' });
+    row.append(checkBox(false),
+      el('input', { class: 'control', type: 'text', value: text || '' }),
+      el('button', { class: 'btn small ghost', type: 'button', 'aria-label': 'Remove',
+        onclick: () => row.remove() }, 'Remove'));
+    list.append(row);
+  };
+  for (const item of items) addRow(item);
+  card.append(list);
+
+  card.append(el('div', { class: 'setfoot' },
+    el('button', { class: 'btn small', type: 'button',
+      onclick: () => addRow('') }, 'Add a check'),
+    el('span', { class: 'grow' }),
+    el('button', { class: 'btn primary', type: 'button', onclick: async () => {
+      const lines = [...list.querySelectorAll('input')]
+        .map((i) => String(i.value || '').trim()).filter(Boolean);
+      if (!lines.length) {
+        toast('warn', 'Nothing to save', 'A checklist needs at least one line.');
+        return;
+      }
+      await act('update_checklist', { which, items: lines }, `${title} saved`);
+    } }, 'Save')));
+  return card;
+}
+
 VIEWS.notfound = () => el('div', {},
   el('h1', { class: 'page-title', text: 'Not in this ledger' }),
   el('p', { class: 'page-sub',
@@ -3501,10 +3792,16 @@ function epicPage(epic) {
   const roll = epic.rollup || {};
   side.append(el('div', { class: 'side-card' },
     el('h3', { text: 'Progress' }),
-    el('div', { class: 'hint', style: 'margin-bottom:3px', text: 'Stories' }),
-    meter(roll.stories_done || 0, roll.stories_total || 0),
-    el('div', { class: 'hint', style: 'margin:10px 0 3px', text: 'Points' }),
-    meter(roll.points_done || 0, roll.points_total || 0)));
+    el('div', { class: 'mp-row' },
+      el('span', { class: 'hint', text: 'Stories' }),
+      el('span', { class: 'mono',
+        text: `${roll.stories_done || 0}/${roll.stories_total || 0}` })),
+    bar(roll.stories_done || 0, roll.stories_total || 0),
+    el('div', { class: 'mp-row', style: 'margin-top:12px' },
+      el('span', { class: 'hint', text: 'Points' }),
+      el('span', { class: 'mono',
+        text: `${roll.points_done || 0}/${roll.points_total || 0}` })),
+    bar(roll.points_done || 0, roll.points_total || 0)));
   wrap.append(el('div', { class: 'item-grid' }, main, side));
   return wrap;
 }
@@ -3781,7 +4078,9 @@ function showMenu(anchor, title, rows, current, onPick) {
         row.sub ? el('span', { class: 'menu-sub', text: row.sub }) : null),
       row.tail ? el('span', { class: 'menu-tail mono', text: row.tail }) : null));
   }
-  (anchor.parentNode || document.body).append(menu);
+  const host = (anchor.closest && anchor.closest('.menu-anchor'))
+    || anchor.parentNode || document.body;
+  host.append(menu);
   openMenu = menu;
   setTimeout(() => {
     document.addEventListener('click', onMenuOutside, true);

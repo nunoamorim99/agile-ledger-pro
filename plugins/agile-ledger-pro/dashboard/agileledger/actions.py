@@ -14,8 +14,10 @@ than hard refusals, so the dashboard reports them and the human decides.
 from __future__ import annotations
 
 import datetime
+import os
 import re
 import subprocess
+import tempfile
 
 from . import mdutil, render
 from .mdutil import EMPTY
@@ -863,6 +865,127 @@ def cut_release(repo: Repo, version: str = "", title: str = "", theme: str = "",
 # Ledger git
 # --------------------------------------------------------------------------
 
+def _set_fenced_keys(lines: list[str], updates: dict) -> bool:
+    """Set ``key: value`` inside the first fenced block, keeping its shape.
+
+    The config blocks are written for a human to read — aligned values, a
+    trailing comment on most lines. Rewriting the block would throw that away,
+    so only the value is replaced, in place, with the comment carried over and
+    the column kept where it was.
+    """
+    changed = False
+    in_fence = False
+    for i, line in enumerate(lines):
+        if line.strip().startswith("```"):
+            if in_fence:
+                break
+            in_fence = True
+            continue
+        if not in_fence:
+            continue
+        body, hash_, comment = line.partition("#")
+        m = re.match(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:\s*)(.*?)(\s*)$", body)
+        if not m:
+            continue
+        key = m.group(2)
+        if key not in updates:
+            continue
+        new_value = str(updates[key]).strip()
+        if new_value == m.group(4).strip():
+            continue
+        rebuilt = f"{m.group(1)}{key}{m.group(3)}{new_value}"
+        if hash_:
+            # Keep the comment where it sat, when the new value still fits.
+            pad = max(1, len(body) - len(rebuilt))
+            rebuilt = rebuilt + " " * pad + hash_ + comment
+        lines[i] = rebuilt.rstrip() if not hash_ else rebuilt
+        changed = True
+    return changed
+
+
+def update_project_config(repo: Repo, values=None, **_) -> dict:
+    """The per-project settings in this repo folder's `Definitions.md`."""
+    values = {k: v for k, v in (values or {}).items() if v is not None}
+    if not values:
+        return {"message": "Nothing to change"}
+    handle = repo.file("Definitions.md")
+    if not handle.exists:
+        raise ActionError("this repo folder has no Definitions.md")
+    if not _set_fenced_keys(handle.lines, values):
+        return {"message": "Nothing to change"}
+    return {"message": f"Updated {', '.join(sorted(values))} in Definitions.md",
+            "command": "(edit Definitions.md)"}
+
+
+def update_ledger_config(repo: Repo, values=None, **_) -> dict:
+    """The ledger-wide settings in the root's `Config.md`."""
+    values = {k: v for k, v in (values or {}).items() if v is not None}
+    if not values:
+        return {"message": "Nothing to change"}
+    path = repo.root / "Config.md"
+    if not path.is_file():
+        raise ActionError("this ledger has no Config.md")
+    lines = mdutil.split_lines(path.read_text(encoding="utf-8"))
+    if not _set_fenced_keys(lines, values):
+        return {"message": "Nothing to change"}
+
+    text = "\n".join(lines)
+    if not text.endswith("\n"):
+        text += "\n"
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".Config.md.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as out:
+            out.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return {"message": f"Updated {', '.join(sorted(values))} in Config.md",
+            "command": "(edit Config.md)"}
+
+
+def update_checklist(repo: Repo, which: str = "", items=None, **_) -> dict:
+    """Rewrite the Definition of Ready or Done in `Definitions.md`.
+
+    These are the team's own words and the gate every command quotes, so they
+    are editable here rather than only in the file — but the shape stays the
+    ledger's: one `- [ ]` bullet per line, under the heading it already has.
+    """
+    which = (which or "").strip().lower()
+    heading = {"ready": "definition of ready", "done": "definition of done"}.get(which)
+    if not heading:
+        raise ActionError("which must be 'ready' or 'done'")
+    items = [str(i).strip() for i in (items or []) if str(i).strip()]
+    if not items:
+        raise ActionError("a checklist needs at least one line")
+
+    handle = repo.file("Definitions.md")
+    span = mdutil.find_section(handle.lines, 2, lambda t: heading in t.lower())
+    if not span:
+        raise ActionError(f"Definitions.md has no {heading} section")
+
+    start, end = span
+    # Keep the prose that introduces the list; replace only the bullets.
+    keep, seen_bullet = [], False
+    mask = mdutil.comment_mask(handle.lines)
+    for i in range(start + 1, end):
+        line = handle.lines[i]
+        if not mask[i] and re.match(r"^\s{0,3}[-*]\s+", line):
+            seen_bullet = True
+            continue
+        if seen_bullet and not line.strip():
+            continue
+        keep.append(line)
+    while keep and not keep[-1].strip():
+        keep.pop()
+
+    body = keep + [""] + [f"- [ ] {item}" for item in items] + [""]
+    handle.replace((start + 1, end), body)
+    return {"message": f"Definition of {which.title()} updated ({len(items)} items)",
+            "command": "(edit Definitions.md)"}
+
+
 def _git(root, *args, timeout=30) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=str(root), capture_output=True,
                           text=True, timeout=timeout)
@@ -1011,6 +1134,9 @@ ACTIONS = {
     "cut_release": cut_release,
     "commit": commit_ledger,
     "check": check_ledger,
+    "update_project_config": update_project_config,
+    "update_ledger_config": update_ledger_config,
+    "update_checklist": update_checklist,
 }
 
 

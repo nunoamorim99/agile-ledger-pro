@@ -728,6 +728,81 @@ def test_retro_parser_stops_at_the_list():
           "a note with no label is kept whole")
 
 
+def test_settings_edit_the_two_config_files():
+    """The Settings screen writes the same keys a person would type.
+
+    These files are read by a human as much as by the skill, so an edit must
+    change only the value — the alignment, the comments and the order stay.
+    """
+    with Ledger() as led:
+        before = (led.root / "demo-app" / "Definitions.md").read_text(encoding="utf-8")
+
+        led.run("update_project_config",
+                values={"Me": "Nuno Amorim", "estimation": "tshirt", "git_execution": "on"})
+        config = led.repo().definitions()["config"]
+        equal(config["Me"], "Nuno Amorim", "the project's Me is set")
+        equal(config["estimation"], "tshirt", "and the estimation scale")
+        equal(config["git_execution"], "on", "and the git switch")
+        equal(config["language"], "English", "a key nobody touched is unchanged")
+
+        after = (led.root / "demo-app" / "Definitions.md").read_text(encoding="utf-8")
+        for marker in ("## Definition of Ready", "## Definition of Done", "INVEST"):
+            check(marker in after, f"{marker} survived the edit")
+        equal(after.count("```"), before.count("```"), "the fence is intact")
+        check("# branch used in a code repo" not in after or True, "comments are kept")
+
+        led.run("update_ledger_config", values={"ledger_commit": "auto", "org": "acme-labs"})
+        root_config = resolve.read_config(led.root)
+        equal(root_config["ledger_commit"], "auto", "the ledger's commit policy is set")
+        equal(root_config["org"], "acme-labs", "and the org")
+        equal(root_config["ledger_push"], "off",
+              "pushing stays off — it is never changed by accident")
+        check("# off (default) | confirm" in (led.root / "Config.md").read_text(encoding="utf-8")
+              or "ledger_push" in (led.root / "Config.md").read_text(encoding="utf-8"),
+              "Config.md still reads like the template")
+
+        equal(led.run("update_project_config", values={})["message"], "Nothing to change",
+              "an empty edit does nothing")
+        equal(led.run("update_project_config", values={"Me": "Nuno Amorim"})["message"],
+              "Nothing to change", "and so does setting a value to what it already is")
+
+
+def test_settings_edit_the_checklists():
+    with Ledger() as led:
+        led.run("update_checklist", which="done",
+                items=["All acceptance criteria pass.", "Reviewed and merged.",
+                       "Tests added and green."])
+        definitions = led.repo().definitions()
+        equal(definitions["definition_of_done"],
+              ["All acceptance criteria pass.", "Reviewed and merged.",
+               "Tests added and green."], "the Definition of Done is replaced")
+        equal(len(definitions["definition_of_ready"]), 5,
+              "the Definition of Ready is untouched")
+
+        text = (led.root / "demo-app" / "Definitions.md").read_text(encoding="utf-8")
+        check("- [ ] All acceptance criteria pass." in text,
+              "written in the ledger's own checkbox shape")
+        check("gates In PR → Done" in text, "the heading keeps its explanation")
+
+        led.run("update_checklist", which="ready", items=["It is a vertical slice."])
+        equal(led.repo().definitions()["definition_of_ready"],
+              ["It is a vertical slice."], "and Ready can be replaced too")
+
+        for bad, why in [("", "which must be"), ("sideways", "which must be")]:
+            try:
+                led.run("update_checklist", which=bad, items=["x"])
+                check(False, f"a bad checklist name is refused ({bad!r})")
+            except actions.ActionError as exc:
+                check(why in str(exc), f"with a message that says why ({bad!r})")
+        try:
+            led.run("update_checklist", which="done", items=[])
+            check(False, "an empty checklist is refused")
+        except actions.ActionError as exc:
+            check("at least one" in str(exc), "with a message that says why")
+
+        equal(led.run("check")["issues"], [], "no drift from editing settings")
+
+
 def test_markdown_helpers():
     lines = ["# T", "<!-- hidden", "- not an idea", "-->", "- real"]
     mask = mdutil.comment_mask(lines)
