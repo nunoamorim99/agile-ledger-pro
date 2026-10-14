@@ -894,7 +894,8 @@ def test_every_action_declares_who_runs_it():
     nobody decided it. Listing the open ones by name makes that a decision
     somebody wrote down.
     """
-    from agileledger.model import ACTION_ROLES, OPEN_ACTIONS, ROLES, action_roles
+    from agileledger.model import (ACTION_ROLES, BACKLOG_ROLES, OPEN_ACTIONS, ROLES,
+                                   action_roles)
 
     declared = set(ACTION_ROLES) | set(OPEN_ACTIONS)
     equal(sorted(set(actions.ACTIONS) - declared), [],
@@ -915,9 +916,20 @@ def test_every_action_declares_who_runs_it():
           "anyone can report a bug — a report nobody can file is a bug lost")
     equal(action_roles("set_blocked"), [],
           "and saying you are stuck never needs permission")
-    for dev_work in ("move_board_item", "complete_item", "detail_story", "update_bug"):
+    for dev_work in ("move_board_item", "complete_item", "update_bug"):
         equal(action_roles(dev_work), [], f"{dev_work} is the developers' own work")
     equal(action_roles("update_me"), [], "and your own name is yours")
+
+    # Writing a Draft up is the Product Owner's: the story sentence and the
+    # acceptance criteria are theirs and the Definition of Ready is their gate.
+    # Editing afterwards is not, because the estimate lives there and the
+    # estimate is the developer's by this skill's own rule — so these two must
+    # never collapse into one answer.
+    equal(action_roles("detail_story"), BACKLOG_ROLES, "the write-up is the PO's")
+    equal(action_roles("update_story"), [],
+          "while editing the story afterwards is not, because the estimate is there")
+    check(action_roles("detail_story") != action_roles("update_story"),
+          "and the two are deliberately different")
 
     check("PO" in action_roles("triage_idea_to_story"), "the backlog is the PO's")
     check("Dev" not in action_roles("triage_idea_to_story"),

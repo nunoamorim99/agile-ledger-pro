@@ -89,10 +89,16 @@ ledger with one person on it is unaffected, and an owner who has not yet run `/w
 machine sees the read-only view until they pick themselves in the You card.
 
 **Backlog and ceremony buttons are hidden from people the roster does not give them to.** Triage,
-discarding or capturing an idea, moving a story to an epic, planning and closing the sprint and
-cutting a release belong to the `PO`/`PM` — and the sprint ceremony to the `SM` as well. Everything
-a developer does is untouched: the board, reporting a bug, the story detail and its estimate, the
-blocked flag, committing the ledger, and saying who they are. `model.ACTION_ROLES` is the whole
+discarding or capturing an idea, **writing a Draft up** (the `Write up` button), moving a story to
+an epic, planning and closing the sprint and cutting a release belong to the `PO`/`PM` — and the
+sprint ceremony to the `SM` as well. Everything a developer does is untouched: the board, reporting
+a bug, **editing** a story that exists and its estimate, the blocked flag, committing the ledger,
+and saying who they are.
+
+The write-up and the edit sit on opposite sides of that line on purpose. Writing a Draft up means
+writing the story sentence and the acceptance criteria against the Definition of Ready, which is the
+Product Owner's job; editing a story afterwards is where the estimate lives, and the estimate is the
+developer's. A Draft page a developer opens says who writes it up rather than just missing a button. `model.ACTION_ROLES` is the whole
 list, one line per action, and deleting a line opens that action back up to the team.
 
 Nothing is hidden that someone needs to read. The idea inbox still lists every idea, so a developer

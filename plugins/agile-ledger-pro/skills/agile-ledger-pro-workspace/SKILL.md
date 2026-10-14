@@ -157,9 +157,16 @@ working tree.
 - The **Settings** screen shows the shared rules — the ledger config, the estimation scale, the
   Definition of Ready and Done, the roster — *read-only* to anyone it is not told is a `PO` or `PM`.
 - **Buttons for actions the roster assigns elsewhere are hidden**: triage, discarding an idea,
-  capturing one, moving a story to an epic, planning and closing the sprint, cutting a release. The
-  board, the bug report, the story detail, the estimate, the blocked flag and everything else a
-  developer does are untouched. `model.ACTION_ROLES` is the whole list, one line per action.
+  capturing one, **writing a Draft up into a Ready story**, moving a story to an epic, planning and
+  closing the sprint, cutting a release. The board, the bug report, editing a story that exists,
+  the estimate, the blocked flag and everything else a developer does are untouched.
+  `model.ACTION_ROLES` is the whole list, one line per action.
+
+  The write-up and the edit are deliberately on opposite sides of that line. `detail_story` takes a
+  Draft to Ready, which means writing the story sentence and the acceptance criteria against the
+  Definition of Ready — the Product Owner's. `update_story` edits a story that already exists, and
+  that is where the **estimate** lives, which is the developer's by this skill's own rule on who
+  owns size and who owns value. Never collapse the two into one answer.
 
 Both exist to stop the accidental edit, which is most unwanted edits. They stop nothing else: that
 person can rewrite their own `Me.local.md`, open `Config.md` in an editor, or POST to the

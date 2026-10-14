@@ -160,6 +160,12 @@ ACTION_ROLES = {
     "triage_idea_to_story": BACKLOG_ROLES,
     "triage_bug": BACKLOG_ROLES,
     "move_story_to_epic": BACKLOG_ROLES,
+    # Writing a Draft up into a Ready story: the story sentence and the
+    # acceptance criteria are the Product Owner's, and the Definition of Ready
+    # is their gate. Editing the story afterwards is `update_story`, which
+    # stays open — the estimate lives there and the estimate is the
+    # developer's own (see SKILL.md on who owns size and who owns value).
+    "detail_story": BACKLOG_ROLES,
     "cut_release": BACKLOG_ROLES,
     # The sprint ceremony.
     "plan_sprint": SPRINT_ROLES,
@@ -176,9 +182,9 @@ ACTION_ROLES = {
 # so they are named here to be tested rather than left to a reader's trust:
 #
 #   add_bug          anyone finds a bug; a report nobody can file is a bug lost
-#   detail_story     acceptance criteria and the estimate are the team's work,
-#                    and the estimate is the developer's own (see SKILL.md)
-#   update_story     the same entry, edited
+#   update_story     editing a story that exists, where the estimate and the
+#                    assignee live — the estimate is the developer's by the
+#                    skill's own rule, so this one must stay open
 #   set_story_state  · set_bug_state · move_board_item · complete_item
 #                    the board is the developers' instrument
 #   set_blocked      saying you are stuck must never need permission
@@ -186,7 +192,7 @@ ACTION_ROLES = {
 #   commit · check   reading the ledger and committing your own edits to it
 #   update_me        your own name is yours
 OPEN_ACTIONS = [
-    "add_bug", "detail_story", "update_story", "set_story_state", "update_bug",
+    "add_bug", "update_story", "set_story_state", "update_bug",
     "set_bug_state", "move_board_item", "set_blocked", "complete_item",
     "commit", "check", "update_me",
 ]

@@ -1609,6 +1609,11 @@ function dorGaps(story) {
  * be worse than the dead buttons: it would tell a developer their sprint is
  * behind on a chore they are not allowed to do. */
 const FINDING_ACTION = { triage: 'triage_idea_to_story', release: 'cut_release' };
+/* `dor` is deliberately not in that map even though writing a story up is the
+ * Product Owner's now. Its count is read by the Health badge and by the
+ * next-sprint readiness card, so filtering it would not hide a button — it
+ * would show a developer a different number of failing stories than the PO
+ * sees, which is a lie rather than a tidy-up. */
 
 function needsYou() {
   const repo = state.repo;
@@ -3058,7 +3063,9 @@ function backlogRow(r) {
   row.append(el('span', { class: 'mono hint', text: isSet(r.points) ? `${r.points}p` : '—' }));
   row.append(el('span', { class: 'hint r-who',
     text: isSet(r.assignee) ? displayName(r.assignee) : '—' }));
-  row.append(r.draft
+  // The empty span either way: a missing cell would pull the rest of the row
+  // left and the columns would stop lining up down the list.
+  row.append(r.draft && mayDo('detail_story')
     ? el('button', { class: 'btn small primary', type: 'button',
         onclick: () => {
           const epic = state.repo.epics.find((e) => e.id === r.epic);
@@ -4313,8 +4320,13 @@ function draftPage(draft) {
         stateChip('story', 'Draft'), priorityMark(draft.priority)),
       el('h1', { class: 'page-title', text: show(draft.title) }),
       el('p', { class: 'page-sub mono', text: draft.id })),
-    el('button', { class: 'btn primary', type: 'button',
+    actionButton('detail_story', { class: 'btn primary',
       onclick: () => detailStoryForm(draft, draft.epic) }, 'Write it up')));
+  if (!mayDo('detail_story') && askInstead('detail_story')) {
+    wrap.append(el('p', { class: 'hint', style: 'margin:-6px 0 14px',
+      text: `${askInstead('detail_story')} writes it up — the story sentence and the acceptance `
+          + 'criteria are the Product Owner’s, and the Definition of Ready is their gate.' }));
+  }
   wrap.append(lifecycleTrack('Draft', ''));
   wrap.append(el('p', { class: 'page-sub' },
     'A Draft lives only as an index line under its epic — there is no detail entry yet. '
