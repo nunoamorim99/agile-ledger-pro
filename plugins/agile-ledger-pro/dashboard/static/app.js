@@ -3369,6 +3369,79 @@ function copyReleaseNotes() {
  * the same keys a person would type, leaving the comments where they were.
  */
 
+/* ------------------------------------------------------- who owns the rules --
+ * A guardrail, and the comment has to say so because the code looks like a
+ * permission check and is not one. This server has no accounts: it is started
+ * by the person reading it, against their own clone, and `Me.local.md` — the
+ * file it asks who you are — is a text file they own. Anyone who wants to edit
+ * the rules can say they are the Product Owner, open Config.md in an editor,
+ * or POST to the action endpoint. Nothing here prevents that and nothing here
+ * is trying to.
+ *
+ * What it does prevent is the accident: wandering into Settings and nudging
+ * the estimation scale or a line of the Definition of Done that the team
+ * agreed together. That is most unwanted edits, so it earns its place — but
+ * the thing that makes the rules *hold* is CODEOWNERS plus branch protection
+ * on the ledger repo, shown further down this same screen.
+ */
+
+/** Roster rows whose role owns the rules, handle or no handle. */
+function ruleOwners() {
+  const owning = (state.workspace.vocabulary && state.workspace.vocabulary.config_owners) || [];
+  return roster().filter((p) => owning.includes(p.role));
+}
+
+/** May the person at this clone edit the team's rules? */
+function mayEditRules() {
+  const owners = ruleOwners();
+  // Nobody has claimed them — a solo ledger, or a roster with no PO or PM.
+  // Locking here would lock a person out of their own settings.
+  if (!owners.length) return true;
+  // Deliberately `myIdentity()` and not `myName()`: the shared `Me:` in
+  // Definitions.md is whatever the last person to commit it wrote, so it is no
+  // evidence of who is looking now. Only this clone's own answer counts, which
+  // means an owner who has not run /whoami here sees the read-only view until
+  // they do — the banner says exactly that, and the You card is one click down.
+  const me = myIdentity();
+  if (!me || !isSet(me.name)) return false;
+  return owners.some((p) => samePerson(p.name, me.name));
+}
+
+/** A setting shown but not editable.
+ *
+ * One shape for every locked field, text or enumerated, because a row of
+ * greyed-out widgets reads as broken while plain values read as information —
+ * which is what they are to somebody who cannot change them.
+ */
+const lockedValue = (value) => el('div', { class: 'control locked' },
+  el('span', { class: 'pick-text', text: isSet(value) ? String(value) : '—' }));
+
+/** The chip a locked card wears, so the reason is next to the thing. */
+const lockChip = () => el('span', { class: 'lockchip', title: 'the rules are owned' }, 'read-only');
+
+/** Said once at the top of Settings rather than on all four cards. */
+function lockBanner() {
+  const owners = ruleOwners();
+  const me = myIdentity();
+  const who = owners.map((p) => p.name).join(' · ');
+  const bar = el('div', { class: 'card lockbar' });
+  bar.append(el('h3', { text: me && isSet(me.name)
+    ? `These are ${who}'s to change`
+    : 'Say who you are to edit these' }));
+  bar.append(el('p', { class: 'hint', text: me && isSet(me.name)
+    ? `You are ${me.name}${isSet(me.role_name) ? ` (${me.role_name})` : ''} on this machine, and the `
+      + 'estimation scale, the Definition of Ready and Done, the roster and the ledger config are '
+      + 'the team’s shared rules. They are shown in full — read them, and ask for a change or '
+      + 'open a pull request against the ledger.'
+    : 'This ledger names an owner for its rules, and nothing on this machine says which of the team '
+      + 'you are. Pick yourself in You, below, and the screen unlocks if the rules are yours.' }));
+  bar.append(el('p', { class: 'hint',
+    text: 'This is a guardrail against the accidental edit, not a permission: you run this server '
+        + 'yourself and the files are in your clone. What actually requires an approval is '
+        + 'CODEOWNERS plus branch protection — the file for it is at the bottom of this screen.' }));
+  return bar;
+}
+
 const PROJECT_SETTINGS = [
   { key: 'language', label: 'Language', hint: 'the language the ledger is written in' },
   { key: 'estimation', label: 'Estimation scale',
@@ -3404,10 +3477,15 @@ VIEWS.settings = () => {
       el('p', { class: 'page-sub',
         text: 'what the skill reads before it does anything, and the two files that hold it' }))));
 
+  // Everything but the You card is the team's shared rules, so one answer
+  // locks them all. You are always yours to set.
+  const locked = !mayEditRules();
+  if (locked) wrap.append(lockBanner());
+
   wrap.append(settingsCard(
     'This project', `${repo.slug}/Definitions.md`, PROJECT_SETTINGS,
     repo.definitions.config || {},
-    (values) => act('update_project_config', { values }, 'Project settings saved')));
+    (values) => act('update_project_config', { values }, 'Project settings saved'), locked));
 
   wrap.append(settingsCard(
     'This ledger', 'Config.md', LEDGER_SETTINGS,
@@ -3415,26 +3493,27 @@ VIEWS.settings = () => {
     async (values) => {
       await act('update_ledger_config', { values }, 'Ledger settings saved');
       await refreshWorkspaceQuietly();
-    }));
+    }, locked));
 
   wrap.append(teamCard());
   wrap.append(youCard());
 
   wrap.append(checklistCard('Definition of Ready', 'ready',
     repo.definitions.definition_of_ready || [],
-    'What a story needs before it can be pulled into a sprint.'));
+    'What a story needs before it can be pulled into a sprint.', locked));
   wrap.append(checklistCard('Definition of Done', 'done',
     repo.definitions.definition_of_done || [],
-    'What has to be true before a story can move to Done.'));
+    'What has to be true before a story can move to Done.', locked));
   return wrap;
 };
 
-function settingsCard(title, file, fields, values, save) {
+function settingsCard(title, file, fields, values, save, locked) {
   const card = el('div', { class: 'card setcard' });
   const form = el('form', { class: 'setform' });
   card.append(el('div', { class: 'gh' },
     el('h2', { text: title }),
-    el('span', { class: 'c mono', text: file })));
+    el('span', { class: 'c mono', text: file }),
+    locked ? lockChip() : null));
 
   for (const spec of fields) {
     const current = values[spec.key];
@@ -3442,16 +3521,21 @@ function settingsCard(title, file, fields, values, save) {
     row.append(el('div', { class: 'setlabel' },
       el('span', { class: 'setlabel-main', text: spec.label }),
       el('span', { class: 'setlabel-key mono', text: spec.key })));
-    const control = spec.options
-      ? pickField(spec.key, spec.options, current)
-      : el('input', { class: 'control', type: 'text', name: spec.key,
-          value: isSet(current) ? current : '' });
+    const control = locked ? lockedValue(current)
+      : spec.options
+        ? pickField(spec.key, spec.options, current)
+        : el('input', { class: 'control', type: 'text', name: spec.key,
+            value: isSet(current) ? current : '' });
     row.append(el('div', { class: 'setcontrol' }, control,
       spec.hint ? el('span', { class: 'hint', text: spec.hint }) : null));
     form.append(row);
   }
 
   const status = el('span', { class: 'hint grow' });
+  if (locked) {
+    card.append(form);
+    return card;
+  }
   form.append(el('div', { class: 'setfoot' },
     status,
     el('button', { class: 'btn primary', type: 'submit' }, 'Save')));
@@ -3652,13 +3736,45 @@ function codeownersLines() {
   return paths.map((p) => p.padEnd(width) + who);
 }
 
+/** The honest part, shown whether or not you may edit the roster above it.
+ *
+ * It used to say "no role here is checked before anything happens", which was
+ * true until this screen started going read-only for people the roster does
+ * not call an owner. So it now says what that check actually is, because a
+ * guardrail described as a permission is the one lie that matters here.
+ */
+function ownersBlock() {
+  const owners = codeownersLines();
+  return el('div', { class: 'owners' },
+    el('h3', { text: 'Who may change the rules' }),
+    el('p', { class: 'hint',
+      text: 'A roster, not a permission list. Everyone who can clone the ledger can read and '
+          + 'edit every file in it, this one included, and the dashboard has no accounts — it '
+          + 'is a server you run on your own machine against your own copy.' }),
+    el('p', { class: 'hint',
+      text: 'This screen does read the roster: it shows the rules read-only to anyone it is not '
+          + 'told is an owner. That is a guardrail against the accidental edit and nothing more — '
+          + 'the file saying who you are is in your own clone, and the ledger is a text file.' }),
+    el('p', { class: 'hint',
+      text: owners
+        ? 'To actually require the Product Owner’s approval before the Definition of Done or the '
+          + 'estimation scale changes, put this in CODEOWNERS at the ledger root and turn on '
+          + 'branch protection for the ledger’s main branch. Then the edit can still be made, '
+          + 'but it cannot land without a review — enforced by your git host, which is why it holds.'
+        : 'Give the Product Owner a GitHub handle above and this card will show you the '
+          + 'CODEOWNERS file that makes the rules reviewable.' }),
+    owners ? el('pre', { class: 'owners-file mono', text: owners.join('\n') }) : null);
+}
+
 /** The team roster, and the one thing that can actually protect the rules. */
 function teamCard() {
   const card = el('div', { class: 'card setcard' });
   const people = roster();
+  const locked = !mayEditRules();
   card.append(el('div', { class: 'gh' },
     el('h2', { text: 'Team' }),
-    el('span', { class: 'c mono', text: 'Config.md' })));
+    el('span', { class: 'c mono', text: 'Config.md' }),
+    locked ? lockChip() : null));
   card.append(el('p', { class: 'hint set-blurb',
     text: 'Who is on this team, and in which role. These are the names offered when you '
         + 'assign work, and the ones “Me” is matched against — so a teammate listed here '
@@ -3685,6 +3801,24 @@ function teamCard() {
     list.append(row);
     return row;
   };
+  if (locked) {
+    // The roster read rather than edited: still every name, role and handle,
+    // because knowing who is on the team is not a privilege.
+    for (const person of people) {
+      list.append(el('div', { class: 'teamrow locked' },
+        el('span', { text: person.name }),
+        el('span', { class: 'c', text: person.role_name || person.role || '—' }),
+        el('span', { class: 'mono c', text: person.handle ? `@${person.handle}` : '—' })));
+    }
+    if (!people.length) {
+      list.append(el('p', { class: 'hint', style: 'padding:10px 18px',
+        text: 'Nobody written down yet.' }));
+    }
+    card.append(list);
+    card.append(ownersBlock());
+    return card;
+  }
+
   for (const person of people) addRow(person);
   card.append(list);
 
@@ -3700,34 +3834,34 @@ function teamCard() {
       render();
     } }, 'Save')));
 
-  /* The honest part. A role in a Markdown file is a label, so the card says
-   * where the enforcement actually is instead of implying it is here. */
-  const owners = codeownersLines();
-  card.append(el('div', { class: 'owners' },
-    el('h3', { text: 'Who may change the rules' }),
-    el('p', { class: 'hint',
-      text: 'A roster, not a permission list. Everyone who can clone the ledger can read and '
-          + 'edit every file in it, this one included, and the dashboard has no accounts — it '
-          + 'is a server you run on your own machine against your own copy. No role here is '
-          + 'checked before anything happens.' }),
-    el('p', { class: 'hint',
-      text: owners
-        ? 'To require the Product Owner’s approval before the Definition of Done or the '
-          + 'estimation scale changes, put this in CODEOWNERS at the ledger root and turn on '
-          + 'branch protection for the ledger’s main branch. Then the edit can still be made, '
-          + 'but it cannot land without a review — enforced by your git host, which is why it holds.'
-        : 'Give the Product Owner a GitHub handle above and this card will show you the '
-          + 'CODEOWNERS file that makes the rules reviewable.' }),
-    owners ? el('pre', { class: 'owners-file mono', text: owners.join('\n') }) : null));
+  card.append(ownersBlock());
   return card;
 }
 
-function checklistCard(title, which, items, blurb) {
+function checklistCard(title, which, items, blurb, locked) {
   const card = el('div', { class: 'card setcard' });
   card.append(el('div', { class: 'gh' },
     el('h2', { text: title }),
-    el('span', { class: 'c mono', text: `${items.length} checks` })));
+    el('span', { class: 'c mono', text: `${items.length} checks` }),
+    locked ? lockChip() : null));
   card.append(el('p', { class: 'hint set-blurb', text: blurb }));
+
+  // Locked, a checklist is just a checklist — which is how a developer who has
+  // to meet it wants to read it anyway. This screen never hides the rules.
+  if (locked) {
+    const read = el('div', { class: 'checkedit' });
+    for (const item of items) {
+      read.append(el('div', { class: 'checkrow locked' },
+        el('span', { class: 'checkmark', 'aria-hidden': 'true', text: '✓' }),
+        el('span', { class: 'grow' }, rich(String(item)))));
+    }
+    if (!items.length) {
+      read.append(el('p', { class: 'hint', style: 'padding:10px 18px',
+        text: 'Nothing written down yet.' }));
+    }
+    card.append(read);
+    return card;
+  }
 
   const list = el('div', { class: 'checkedit' });
   const addRow = (text) => {

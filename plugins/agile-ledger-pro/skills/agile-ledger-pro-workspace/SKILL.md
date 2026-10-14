@@ -148,9 +148,18 @@ A person can have either without the other.
 **Never tell a user that a role in this file restricts anything, and never gate a command on one.**
 The ledger is Markdown in a git repo: everyone who can clone it can read *and* edit every file,
 `Config.md` included. The dashboard is a server each person runs on their own machine against their
-own clone, with no authentication and no accounts. There is no place in this design where a role
-could be checked, and a command that pretended otherwise would be lying to the user about a
-protection they do not have.
+own clone, with no authentication and no accounts. A command that refused on the grounds of a role
+would be lying to the user about a protection they do not have — and trivially so, because the file
+that says who they are is in their own working tree.
+
+**One exception, and it is cosmetic.** The dashboard's Settings screen shows the shared rules — the
+ledger config, the estimation scale, the Definition of Ready and Done, the roster — *read-only* to
+anyone whose roster role is not `PO` or `PM`, with a banner naming the owners. It exists to stop the
+accidental edit, which is most unwanted edits. It stops nothing else: that person can rewrite their
+own `Me.local.md`, open `Config.md` in an editor, or POST to the dashboard's action endpoint. Call it
+a guardrail when you describe it, never a permission, and never cite it as the reason a team's rules
+are safe. Nothing hides: the rules are always shown in full, because the people who have to meet the
+Definition of Done need to read it.
 
 What *does* enforce it is the git host. When a team asks how to stop the Definition of Done or the
 estimation scale being changed without the Product Owner, the answer is a `CODEOWNERS` file at the

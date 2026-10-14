@@ -1241,6 +1241,44 @@ select { color-scheme: inherit; }
   max-width: 84ch; color: var(--ink3);
 }
 
+/* -------------------------------------------- the rules, shown not editable */
+
+/* A locked setting wears the control's box and none of its affordances: no
+   focus ring, no hover, no caret. It reads as a value, which is what it is to
+   somebody who cannot change it — a greyed-out widget would read as broken. */
+.control.locked {
+  background: var(--sunken); border-color: var(--rule);
+  color: var(--ink2); cursor: default;
+  display: flex; align-items: center;
+}
+
+.lockchip {
+  margin-left: 8px; padding: 1px 7px; flex: none;
+  background: var(--sunken); color: var(--ink3);
+  border: 1px solid var(--rule); border-radius: 999px;
+  font-size: 11px; font-weight: 550; letter-spacing: 0.01em;
+}
+
+/* Said once, above the cards. Warning-toned rather than error-toned: nothing
+   has gone wrong, the reader simply is not the owner of these files. */
+.lockbar {
+  padding: 14px 18px 16px; margin-bottom: 14px;
+  border-left: 3px solid var(--warning);
+}
+.lockbar h3 { margin: 0 0 6px; font-size: 13.5px; font-weight: 650; }
+.lockbar .hint { margin: 0 0 7px; max-width: 84ch; }
+.lockbar .hint:last-child { margin-bottom: 0; }
+
+/* Read-only rows keep the grid of their editable twins so the columns still
+   line up, minus the column the Remove button occupied. */
+.teamrow.locked { grid-template-columns: minmax(0, 1fr) 128px minmax(0, 1fr); padding: 9px 18px; }
+.checkrow.locked { align-items: baseline; padding: 9px 18px; }
+.checkrow.locked .checkmark { color: var(--ink3); flex: none; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .teamrow.locked { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
+
 /* --------------------------------------------------------- the toolbar */
 
 .toolbar {

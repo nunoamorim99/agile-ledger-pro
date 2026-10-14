@@ -80,10 +80,25 @@ still read when no local file exists, which is what a one-person ledger has alwa
 exist the card says which one is winning. In a Claude Code session, `/whoami` does the same job and
 can match you by your `gh` login.
 
+**The rules go read-only for anyone who is not an owner.** If the roster names a `PO` or a `PM`,
+Settings shows the ledger config, the estimation scale, the roster and the two checklists read-only
+to everybody else, with a banner saying whose they are. The **You** card is never locked — your own
+name is yours — and nothing is hidden: the Definition of Done is shown in full, because the people
+who have to meet it need to read it. A ledger whose roster names no owner stays fully editable, so a
+ledger with one person on it is unaffected, and an owner who has not yet run `/whoami` on that
+machine sees the read-only view until they pick themselves in the You card.
+
+Be clear with your team about what that is: a **guardrail against the accidental edit**, which is
+most unwanted edits, and nothing more. The person reading it starts this server themselves, against
+their own clone, and `Me.local.md` — the file it asks who they are — is a text file they own. They
+can say they are the Product Owner, open `Config.md` in an editor, or POST to the action endpoint.
+It is not a boundary and the screen says so.
+
 A role in that roster is a **label, not a permission.** Everyone who can clone the ledger can read
 and edit every file in it, this one included, and this server has no accounts — it is something you
-run on your own machine against your own copy, and no role is checked before anything happens. To
-actually require the Product Owner's approval before the Definition of Done or the estimation scale
+run on your own machine against your own copy. The read-only view above is the only thing that reads
+a role, and it is a guardrail rather than a check that could hold. To actually require the Product
+Owner's approval before the Definition of Done or the estimation scale
 changes, protect those files with `CODEOWNERS` and branch protection in the ledger repository; the
 Settings screen shows you the file to use, built from the roster. Then the edit can still be made
 but cannot land without a review — enforced by your git host, which is why it holds.

@@ -34,8 +34,13 @@ Who is on this team, and in which role. Roles: `PO` · `PM` · `SM` · `Dev` · 
 > skill can stop a developer from opening this file.
 >
 > What the roster is for: the dashboard offers these names when you assign work instead of asking you
-> to retype them, `Me:` resolves whether it is written as a handle or a display name, and `/init-ledger`
-> turns the `PO`/`PM` rows into the `CODEOWNERS` file below.
+> to retype them, `/whoami` matches each person against it so they can say which one they are, and
+> `/init-ledger` turns the `PO`/`PM` rows into the `CODEOWNERS` file below.
+>
+> The dashboard does also show this screen's settings **read-only** to anyone it is not told is a
+> `PO` or `PM`. That is a guardrail against the accidental edit, not a permission — it reads
+> `Me.local.md`, which is a file in that person's own clone — and it hides nothing: the rules are
+> always readable by the people who have to meet them.
 >
 > **To make the rules actually protected**, use your git host. A `CODEOWNERS` file at the ledger root —
 > `/Config.md @ada` and `/*/Definitions.md @ada` — plus branch protection on `main` requiring code-owner
