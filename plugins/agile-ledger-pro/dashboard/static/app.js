@@ -3551,6 +3551,30 @@ function youField(me) {
   return { node, read: () => read() };
 }
 
+/** What to say under the picker, in the three states it can be in.
+ *
+ * The example of a handle matching a name is taken from the roster in front
+ * of the reader rather than invented. A made-up pair teaches nothing — shown
+ * their own row, or a colleague's, they can see at a glance that the two
+ * spellings are one person, and there is no second name to wonder about.
+ */
+function youHint(me) {
+  if (me && isSet(me.name) && !me.on_roster) {
+    return `${me.name} is not on the team roster — add the row there to be offered for assignment`;
+  }
+  const people = roster();
+  if (!people.length) {
+    return 'there is no roster in Config.md yet, so this name is used exactly as written';
+  }
+  // Their own row makes the clearest example; otherwise the first colleague
+  // with a handle. Nobody with one means there is no pair to demonstrate.
+  const mine = me && me.on_roster ? personFor(me.handle || me.name) : null;
+  const shown = (mine && mine.handle ? mine : people.find((p) => p.handle));
+  return shown
+    ? `matched against the roster, so @${shown.handle} and ${shown.name} find the same work`
+    : 'matched against the roster by name; add GitHub handles there to match those too';
+}
+
 /** Who you are on this machine — a joiner's whole setup, in one card. */
 function youCard() {
   const me = myIdentity();
@@ -3570,10 +3594,7 @@ function youCard() {
     el('span', { class: 'setlabel-main', text: 'I am' }),
     el('span', { class: 'setlabel-key mono', text: 'name' })));
   row.append(el('div', { class: 'setcontrol' }, field.node,
-    el('span', { class: 'hint',
-      text: me && isSet(me.name) && !me.on_roster
-        ? `${me.name} is not on the team roster — add the row there to be offered for assignment`
-        : 'matched against the roster, so @rita and Rita find the same work' })));
+    el('span', { class: 'hint', text: youHint(me) })));
   card.append(row);
 
   /* A stale shared `Me:` is not an error — it is what the ledger used before
