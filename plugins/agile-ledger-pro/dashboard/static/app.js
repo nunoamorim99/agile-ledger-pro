@@ -175,6 +175,18 @@ async function postAction(action, params) {
 }
 
 async function act(action, params, successTitle) {
+  /* Every write in the page comes through here, so this is where the guardrail
+   * is actually applied — a button hidden elsewhere is only the tidy half, and
+   * a stale tab or a view I missed would otherwise still write. It is still a
+   * guardrail: it reads `Me.local.md` from the reader's own clone, and the
+   * server behind it has no accounts and checks nothing. */
+  if (!mayDo(action)) {
+    const who = askInstead(action);
+    toast('warn', 'Not yours to do',
+      who ? `The roster gives this to ${who}. Ask them, or change the roster in Settings.`
+          : 'The roster does not give this to you.');
+    return null;
+  }
   try {
     const result = await api(`/api/repo/${encodeURIComponent(state.slug)}/action`, {
       method: 'POST',
@@ -821,7 +833,7 @@ VIEWS.ideas = () => {
   const repo = state.repo;
   const wrap = el('div', {});
   wrap.append(sectionHead('Idea inbox', 'raw captures, newest first',
-    el('button', { class: 'btn primary', type: 'button', onclick: newIdeaForm }, 'New idea')));
+    actionButton('add_idea', { class: 'btn primary', onclick: newIdeaForm }, 'New idea')));
 
   if (!repo.ideas.length) {
     wrap.append(el('p', { class: 'empty', text: 'The inbox is empty.' }));
@@ -830,10 +842,12 @@ VIEWS.ideas = () => {
       el('div', { class: 'item' },
         el('span', { class: 'when', text: show(idea.date) }),
         prose(idea.text, 'div', { class: 'grow' }),
-        el('div', { class: 'item-actions' },
-          el('button', { class: 'btn small', type: 'button', onclick: () => triageToEpicForm(idea) }, '→ Epic'),
-          el('button', { class: 'btn small', type: 'button', onclick: () => triageToStoryForm(idea) }, '→ Story'),
-          el('button', { class: 'btn small', type: 'button', onclick: () => discardIdea(idea) }, 'Discard'))))));
+        // Nothing at all rather than three dead buttons; the inbox stays
+        // readable, which is how a developer sees what is coming.
+        mayDo('triage_idea_to_story') ? el('div', { class: 'item-actions' },
+          actionButton('triage_idea_to_epic', { class: 'btn small', onclick: () => triageToEpicForm(idea) }, '→ Epic'),
+          actionButton('triage_idea_to_story', { class: 'btn small', onclick: () => triageToStoryForm(idea) }, '→ Story'),
+          actionButton('discard_idea', { class: 'btn small', onclick: () => discardIdea(idea) }, 'Discard')) : null))));
   }
 
   wrap.append(el('section', { class: 'section', style: 'margin-top:22px' },
@@ -844,7 +858,7 @@ VIEWS.ideas = () => {
           el('div', { class: 'item' },
             el('span', { class: 'when', text: show(bug.date) }),
             prose(bug.text, 'div', { class: 'grow' }),
-            el('button', { class: 'btn small', type: 'button', onclick: () => triageBugForm(bug) }, 'Triage'))))
+            actionButton('triage_bug', { class: 'btn small', onclick: () => triageBugForm(bug) }, 'Triage'))))
       : el('p', { class: 'empty', text: 'No untriaged bug reports.' })));
   return wrap;
 };
@@ -920,15 +934,22 @@ VIEWS.commands = () => {
             ['Command', 'What it does', 'Writes', 'Where'].map((h) => el('th', { text: h })))),
           el('tbody', {}, rows.map((c) => {
             const full = `/${c.name}${c.args ? ' ' + c.args : ''}`;
-            const run = HERE_ACTIONS[c.action];
+            const mine = !c.action || mayDo(c.action);
+            const run = mine ? HERE_ACTIONS[c.action] : null;
             const view = c.view || ACTION_VIEW[c.action];
+            const owners = c.action ? askInstead(c.action) : '';
             return el('tr', {},
               el('td', {},
                 el('button', { class: 'cmdbtn', type: 'button', title: 'Copy this command',
                   onclick: () => copyCommand(full) }, full)),
               el('td', {},
                 el('div', { text: c.description || EMPTY }),
-                c.note ? el('div', { class: 'hint', style: 'margin-top:3px', text: c.note }) : null),
+                c.note ? el('div', { class: 'hint', style: 'margin-top:3px', text: c.note }) : null,
+                // Said on the row rather than hidden: a developer should know
+                // the command exists and who runs it, not wonder why it is
+                // missing from their page.
+                !mine && owners ? el('div', { class: 'hint', style: 'margin-top:3px',
+                  text: `The roster gives this to ${owners}.` }) : null),
               el('td', { class: 'id', text: c.writes }),
               el('td', {}, run
                 ? el('button', { class: 'btn small primary', type: 'button', onclick: run }, 'Do it here')
@@ -1361,6 +1382,7 @@ function cutReleaseForm() {
 
 async function runCheck() {
   const result = await act('check', {}, 'Ledger check');
+  if (!result) return;                 // declined by the guardrail
   state.drift = result.issues || [];
   render();
   if (state.drift.length) {
@@ -1582,6 +1604,12 @@ function dorGaps(story) {
   return missing;
 }
 
+/* A finding whose only answer is an action this person may not run is not a
+ * thing that needs them, so it never reaches their list. Leaving it in would
+ * be worse than the dead buttons: it would tell a developer their sprint is
+ * behind on a chore they are not allowed to do. */
+const FINDING_ACTION = { triage: 'triage_idea_to_story', release: 'cut_release' };
+
 function needsYou() {
   const repo = state.repo;
   if (!repo) return [];
@@ -1650,7 +1678,7 @@ function needsYou() {
       title: `${git.changes.length} uncommitted ledger file(s)`,
       detail: `on ${git.branch}` });
   }
-  return out;
+  return out.filter((f) => !FINDING_ACTION[f.kind] || mayDo(FINDING_ACTION[f.kind]));
 }
 
 function healthCount() {
@@ -1693,6 +1721,7 @@ VIEWS.today = () => {
       el('h1', { class: 'page-title', text: greeting() }),
       el('p', { class: 'page-sub', text: context })),
     seg));
+  wrap.append(identityPrompt());
 
   wrap.append(el('div', { class: 'two-col' },
     lens === 'me' ? myWorkColumn() : needsYouColumn(findings),
@@ -1780,7 +1809,7 @@ function needActions(f) {
       return [el('button', { class: 'btn small', type: 'button',
         onclick: () => openItemPage(f.id) }, 'Open')];
     case 'release':
-      return [el('button', { class: 'btn small primary', type: 'button',
+      return [actionButton('cut_release', { class: 'btn small primary',
         onclick: cutReleaseForm }, 'Cut release…')];
     case 'drift':
       return [el('button', { class: 'btn small', type: 'button',
@@ -1800,17 +1829,17 @@ function triageStrip() {
   for (const idea of repo.ideas.slice(0, 3)) {
     strip.append(el('div', { class: 'triage-row' },
       prose(idea.text, 'span', { class: 'grow' }),
-      el('button', { class: 'btn small', type: 'button',
+      actionButton('triage_idea_to_epic', { class: 'btn small',
         onclick: () => triageToEpicForm(idea) }, '→ Epic'),
-      el('button', { class: 'btn small', type: 'button',
+      actionButton('triage_idea_to_story', { class: 'btn small',
         onclick: () => triageToStoryForm(idea) }, '→ Story'),
-      el('button', { class: 'btn small ghost', type: 'button',
+      actionButton('discard_idea', { class: 'btn small ghost',
         onclick: () => discardIdea(idea) }, 'Discard')));
   }
   for (const bug of repo.bug_inbox.slice(0, 2)) {
     strip.append(el('div', { class: 'triage-row' },
       prose(bug.text, 'span', { class: 'grow' }),
-      el('button', { class: 'btn small', type: 'button',
+      actionButton('triage_bug', { class: 'btn small',
         onclick: () => triageBugForm(bug) }, 'Triage bug')));
   }
   const more = repo.ideas.length + repo.bug_inbox.length - strip.children.length;
@@ -1828,8 +1857,8 @@ function sprintPulse() {
   const card = el('div', { class: 'side-card' }, el('h3', { text: 'Sprint pulse' }));
   if (!isSet(sprint.name)) {
     card.append(el('p', { class: 'hint', text: 'No sprint open.' }));
-    card.append(el('button', { class: 'btn small primary', style: 'margin-top:10px',
-      type: 'button', onclick: planSprintForm }, 'Plan sprint'));
+    card.append(actionButton('plan_sprint', { class: 'btn small primary',
+      style: 'margin-top:10px', onclick: planSprintForm }, 'Plan sprint'));
     return card;
   }
 
@@ -2389,7 +2418,7 @@ VIEWS.board = () => {
         el('h1', { class: 'page-title', text: 'No sprint open' }),
         el('p', { class: 'page-sub',
           text: 'Pull Ready stories and triaged bugs onto a board to start one.' })),
-      el('button', { class: 'btn primary', type: 'button', onclick: planSprintForm },
+      actionButton('plan_sprint', { class: 'btn primary', onclick: planSprintForm },
         'Plan sprint')));
     return wrap;
   }
@@ -2411,8 +2440,8 @@ VIEWS.board = () => {
         day ? el('span', { text: `day ${day.day} of ${day.total}` }) : null),
       el('h1', { class: 'page-title' }, rich(show(sprint.goal)))),
     el('div', { class: 'chips desktop-only' },
-      el('button', { class: 'btn', type: 'button', onclick: closeSprintForm }, 'Close sprint'),
-      el('button', { class: 'btn', type: 'button', onclick: planSprintForm }, 'Replan'))));
+      actionButton('close_sprint', { onclick: closeSprintForm }, 'Close sprint'),
+      actionButton('plan_sprint', { onclick: planSprintForm }, 'Replan'))));
 
   // The sprint's numbers, up where a decision gets made.
   const stats = el('div', { class: 'sprint-stats' });
@@ -2821,9 +2850,9 @@ function selectionBar() {
     onclick: () => bulkPriority(ids) }, 'Priority…'));
   bar.append(el('button', { class: 'btn small', type: 'button',
     onclick: () => bulkAssign(ids) }, 'Assign…'));
-  bar.append(el('button', { class: 'btn small', type: 'button',
+  bar.append(actionButton('move_story_to_epic', { class: 'btn small',
     onclick: () => bulkMoveEpic(ids) }, 'Move to epic…'));
-  bar.append(el('button', { class: 'btn small primary', type: 'button',
+  bar.append(actionButton('pull_into_sprint', { class: 'btn small primary',
     onclick: () => bulkPull(ids) }, 'Pull into sprint'));
   bar.append(el('span', { class: 'grow' }));
   bar.append(el('button', { class: 'btn small ghost', type: 'button',
@@ -3083,7 +3112,7 @@ VIEWS.ship = () => {
         isSet(repo.history.rolling_velocity)
           ? `rolling velocity ${repo.history.rolling_velocity}` : null,
       ].filter(Boolean).join(' · ') })),
-    el('button', { class: 'btn primary desktop-only', type: 'button',
+    actionButton('cut_release', { class: 'btn primary desktop-only',
       onclick: cutReleaseForm, disabled: increment.length ? null : true }, 'Cut release')));
 
   wrap.append(roadmap());
@@ -3151,7 +3180,7 @@ function roadmap() {
 function incrementPanel(increment) {
   const section = el('section', { class: 'section' });
   section.append(sectionHead('Increment', 'done, not yet released',
-    el('button', { class: 'btn small primary desktop-only', type: 'button',
+    actionButton('cut_release', { class: 'btn small primary desktop-only',
       onclick: cutReleaseForm, disabled: increment.length ? null : true }, 'Cut release')));
   if (!increment.length) {
     section.append(el('p', { class: 'empty', text: 'Nothing waiting to be released.' }));
@@ -3385,27 +3414,80 @@ function copyReleaseNotes() {
  * on the ledger repo, shown further down this same screen.
  */
 
+/** Roster rows holding a role that may run `action`; empty when it is open. */
+function holdersOf(action) {
+  const roles = (state.workspace.vocabulary.action_roles || {})[action] || [];
+  return roles.length ? roster().filter((p) => roles.includes(p.role)) : [];
+}
+
+/** May the person at this clone run `action`?
+ *
+ * Open when the action is unrestricted, and open when the roster names nobody
+ * holding the role — otherwise a team of developers could not plan their own
+ * sprint, and a one-person ledger could do nothing at all.
+ *
+ * Otherwise it needs `Me.local.md`, and deliberately not `myName()`: the
+ * shared `Me:` in Definitions.md is whatever the last person committed, so it
+ * says nothing about who is looking now.
+ */
+function mayDo(action) {
+  const holders = holdersOf(action);
+  if (!holders.length) return true;
+  const me = myIdentity();
+  if (!me || !isSet(me.name)) return false;
+  return holders.some((p) => samePerson(p.name, me.name));
+}
+
+/** Who to ask, in words, when an action is not yours. */
+function askInstead(action) {
+  const names = holdersOf(action).map((p) => p.name);
+  if (!names.length) return '';
+  return names.length === 1 ? names[0]
+    : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+}
+
+/** Said on Today when the roster is hiding things and nobody has said who
+ *  they are.
+ *
+ * Without it the buttons are simply missing and no page explains why, which
+ * from the other side of the screen is indistinguishable from a dashboard
+ * that has broken — and that is exactly how this arrived as a bug report.
+ */
+function identityPrompt() {
+  if (myIdentity()) return null;
+  const restricted = Object.keys(state.workspace.vocabulary.action_roles || {})
+    .some((action) => holdersOf(action).length);
+  if (!restricted) return null;
+  return el('div', { class: 'card lockbar identityask' },
+    el('h3', { text: 'Nobody on this machine has said who they are' }),
+    el('p', { class: 'hint',
+      text: 'This team’s roster gives some actions to particular roles, so until you pick '
+          + 'yourself those buttons stay hidden and “My work” has nothing to filter by. It is '
+          + 'one click, and the answer stays on this machine — your teammates keep their own.' }),
+    el('div', { style: 'margin-top:10px' },
+      el('button', { class: 'btn small primary', type: 'button',
+        onclick: () => goTo('settings') }, 'Say who you are')));
+}
+
+/** A button for an action, or nothing at all when it is not this person's.
+ *
+ * Returning null rather than a disabled button, because a button you may not
+ * press is noise — unlike the Definition of Done on the Settings screen,
+ * which is information and stays. `el()` drops null children, so every call
+ * site reads the same as it did before.
+ */
+function actionButton(action, attrs, ...label) {
+  if (!mayDo(action)) return null;
+  return el('button', { class: 'btn', type: 'button', ...attrs }, ...label);
+}
+
 /** Roster rows whose role owns the rules, handle or no handle. */
 function ruleOwners() {
-  const owning = (state.workspace.vocabulary && state.workspace.vocabulary.config_owners) || [];
-  return roster().filter((p) => owning.includes(p.role));
+  return holdersOf('update_ledger_config');
 }
 
 /** May the person at this clone edit the team's rules? */
-function mayEditRules() {
-  const owners = ruleOwners();
-  // Nobody has claimed them — a solo ledger, or a roster with no PO or PM.
-  // Locking here would lock a person out of their own settings.
-  if (!owners.length) return true;
-  // Deliberately `myIdentity()` and not `myName()`: the shared `Me:` in
-  // Definitions.md is whatever the last person to commit it wrote, so it is no
-  // evidence of who is looking now. Only this clone's own answer counts, which
-  // means an owner who has not run /whoami here sees the read-only view until
-  // they do — the banner says exactly that, and the You card is one click down.
-  const me = myIdentity();
-  if (!me || !isSet(me.name)) return false;
-  return owners.some((p) => samePerson(p.name, me.name));
-}
+const mayEditRules = () => mayDo('update_ledger_config');
 
 /** A setting shown but not editable.
  *

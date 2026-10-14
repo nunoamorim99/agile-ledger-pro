@@ -1259,6 +1259,10 @@ select { color-scheme: inherit; }
   font-size: 11px; font-weight: 550; letter-spacing: 0.01em;
 }
 
+/* The same bar used to ask who you are on Today, where it is the first thing
+   to do rather than a restriction being explained. */
+.lockbar.identityask { border-left-color: var(--accent); }
+
 /* Said once, above the cards. Warning-toned rather than error-toned: nothing
    has gone wrong, the reader simply is not the owner of these files. */
 .lockbar {

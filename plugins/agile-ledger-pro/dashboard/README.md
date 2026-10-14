@@ -88,11 +88,31 @@ who have to meet it need to read it. A ledger whose roster names no owner stays 
 ledger with one person on it is unaffected, and an owner who has not yet run `/whoami` on that
 machine sees the read-only view until they pick themselves in the You card.
 
+**Backlog and ceremony buttons are hidden from people the roster does not give them to.** Triage,
+discarding or capturing an idea, moving a story to an epic, planning and closing the sprint and
+cutting a release belong to the `PO`/`PM` — and the sprint ceremony to the `SM` as well. Everything
+a developer does is untouched: the board, reporting a bug, the story detail and its estimate, the
+blocked flag, committing the ledger, and saying who they are. `model.ACTION_ROLES` is the whole
+list, one line per action, and deleting a line opens that action back up to the team.
+
+Nothing is hidden that someone needs to read. The idea inbox still lists every idea, so a developer
+sees what is coming; the **Commands** sheet still lists every command, with a line saying whose it
+is rather than a gap where it used to be. The "Needs you" lens does drop findings whose only answer
+is an action you may not run — being told the inbox needs triaging when you may not triage is worse
+than not being told.
+
 Be clear with your team about what that is: a **guardrail against the accidental edit**, which is
 most unwanted edits, and nothing more. The person reading it starts this server themselves, against
 their own clone, and `Me.local.md` — the file it asks who they are — is a text file they own. They
 can say they are the Product Owner, open `Config.md` in an editor, or POST to the action endpoint.
-It is not a boundary and the screen says so.
+It is not a boundary and the screen says so. The slash commands do not check at all: `/triage` run
+by a developer in a Claude Code session says whose call it is and then does it, the same way a
+Definition-of-Ready gap is reported rather than enforced.
+
+Until somebody picks themselves in the You card, the dashboard does not know which of the team they
+are, so the restricted buttons stay hidden — including from the Product Owner. **Today** says so in
+a card with a button straight to Settings, because buttons that are simply missing look like a
+broken page.
 
 A role in that roster is a **label, not a permission.** Everyone who can clone the ledger can read
 and edit every file in it, this one included, and this server has no accounts — it is something you

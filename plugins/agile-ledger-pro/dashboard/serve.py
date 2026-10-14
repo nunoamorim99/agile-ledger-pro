@@ -29,7 +29,8 @@ sys.path.insert(0, str(HERE))
 
 from agileledger import actions, commands, resolve  # noqa: E402
 from agileledger.actions import ActionError  # noqa: E402
-from agileledger.model import (BOARD_COLUMNS, BUG_STATE_LABEL, BUG_STATES,  # noqa: E402
+from agileledger.model import (ACTION_ROLES, BOARD_COLUMNS, BUG_STATE_LABEL,  # noqa: E402
+                               BUG_STATES,
                                CONFIG_OWNERS, EPIC_STATE_LABEL, EPIC_STATES,
                                FIBONACCI, LAYERS, LEDGER_FILES, PRIORITIES,
                                PRIORITY_NAME, ROLE_NAME, ROLES, SEVERITIES,
@@ -91,6 +92,10 @@ class Workspace:
                 "files": LEDGER_FILES,
                 "roles": [{"value": r, "name": ROLE_NAME[r]} for r in ROLES],
                 "config_owners": CONFIG_OWNERS,
+                # Which roles run which action, for the dashboard to hide a
+                # button the roster says is not this person's. A guardrail
+                # and not a check that holds: see model.ACTION_ROLES.
+                "action_roles": ACTION_ROLES,
                 # The ledger's own words, emoji and all. The UI draws its own
                 # glyphs but shows these on hover, so a reader can always get
                 # back to the token that is actually written in the file — and

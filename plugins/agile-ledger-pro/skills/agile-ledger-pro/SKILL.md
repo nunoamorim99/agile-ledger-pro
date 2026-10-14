@@ -521,7 +521,10 @@ re-versioned); to change what a story did, write a new story under the epic.
   to its person. Which of them is *you* is a different question, answered per clone in
   `Me.local.md`, never in the shared `Definitions.md`. A role in the roster is a **label, never a
   permission**: see the workspace skill for why nothing can be gated on it, and for the `CODEOWNERS`
-  setup that does protect this file.
+  setup that does protect this file. The dashboard does hide its *buttons* for backlog and ceremony
+  actions from people the roster does not give them to; **slash commands never refuse.** If a
+  developer runs `/triage`, `/plan-sprint` or `/release`, say in one line that the roster gives it to
+  the `PO`/`PM`, offer to carry on, and do it — reported like a Definition-of-Ready gap, not enforced.
 
 ---
 

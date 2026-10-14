@@ -132,6 +132,70 @@ ROLE_NAME = {
 # every Definitions.md.
 CONFIG_OWNERS = ["PO", "PM"]
 
+# Who runs which action, once a team has written a roster.
+#
+# The same guardrail the Settings screen uses, and the same caveat: this is a
+# label being read, not a permission being enforced. Each person runs the
+# dashboard themselves against their own clone, and the file it asks who they
+# are is in their working tree. It stops the wrong button being pressed by
+# accident, which is most wrong buttons, and stops nothing else.
+#
+# Roles that shape *what gets built* — the backlog is the Product Owner's, and
+# a developer should not be the one deciding an idea becomes an epic.
+BACKLOG_ROLES = ["PO", "PM"]
+
+# Roles that run the *ceremony*. Separate from the above because a Scrum
+# Master plans and closes sprints without owning the backlog.
+SPRINT_ROLES = ["PO", "PM", "SM"]
+
+# An action absent from this map is open to the whole team, which is the
+# deliberate default: a new action belongs to everybody until somebody decides
+# it does not. Delete a line here to open that action up again — one line is
+# the whole change, in both the dashboard and the command sheet.
+ACTION_ROLES = {
+    # Shaping the backlog: what is worth building, and in what order.
+    "add_idea": BACKLOG_ROLES,
+    "discard_idea": BACKLOG_ROLES,
+    "triage_idea_to_epic": BACKLOG_ROLES,
+    "triage_idea_to_story": BACKLOG_ROLES,
+    "triage_bug": BACKLOG_ROLES,
+    "move_story_to_epic": BACKLOG_ROLES,
+    "cut_release": BACKLOG_ROLES,
+    # The sprint ceremony.
+    "plan_sprint": SPRINT_ROLES,
+    "pull_into_sprint": SPRINT_ROLES,
+    "close_sprint": SPRINT_ROLES,
+    # The team's shared rules — the same set the Settings screen locks.
+    "update_project_config": CONFIG_OWNERS,
+    "update_ledger_config": CONFIG_OWNERS,
+    "update_team": CONFIG_OWNERS,
+    "update_checklist": CONFIG_OWNERS,
+}
+
+# Everything not listed above is open, and these are the ones it matters for,
+# so they are named here to be tested rather than left to a reader's trust:
+#
+#   add_bug          anyone finds a bug; a report nobody can file is a bug lost
+#   detail_story     acceptance criteria and the estimate are the team's work,
+#                    and the estimate is the developer's own (see SKILL.md)
+#   update_story     the same entry, edited
+#   set_story_state  · set_bug_state · move_board_item · complete_item
+#                    the board is the developers' instrument
+#   set_blocked      saying you are stuck must never need permission
+#   update_bug       fixing is development
+#   commit · check   reading the ledger and committing your own edits to it
+#   update_me        your own name is yours
+OPEN_ACTIONS = [
+    "add_bug", "detail_story", "update_story", "set_story_state", "update_bug",
+    "set_bug_state", "move_board_item", "set_blocked", "complete_item",
+    "commit", "check", "update_me",
+]
+
+
+def action_roles(action: str) -> list[str]:
+    """Roles that may run ``action``, or ``[]`` when it is open to everyone."""
+    return ACTION_ROLES.get(action, [])
+
 # What people actually type. The roster is written by hand as often as by the
 # dashboard, so "Product Owner", "po" and "PO" all have to land in one bucket.
 ROLE_ALIASES = {

@@ -886,6 +886,68 @@ def test_team_section_is_created_when_a_ledger_predates_it():
         check(not tail.endswith("\n\n"), "without leaving a blank line at the end")
 
 
+def test_every_action_declares_who_runs_it():
+    """Each action is either role-restricted or explicitly open — never neither.
+
+    The gap this closes is the silent one: a new action added to `ACTIONS` and
+    forgotten here is open to the whole team, which may well be right, but
+    nobody decided it. Listing the open ones by name makes that a decision
+    somebody wrote down.
+    """
+    from agileledger.model import ACTION_ROLES, OPEN_ACTIONS, ROLES, action_roles
+
+    declared = set(ACTION_ROLES) | set(OPEN_ACTIONS)
+    equal(sorted(set(actions.ACTIONS) - declared), [],
+          "every registered action says who may run it")
+    equal(sorted(declared - set(actions.ACTIONS)), [],
+          "and nothing is declared that is not registered")
+    equal(sorted(set(ACTION_ROLES) & set(OPEN_ACTIONS)), [],
+          "no action is both restricted and open")
+
+    for action, roles in ACTION_ROLES.items():
+        check(bool(roles), f"{action} names at least one role")
+        for role in roles:
+            check(role in ROLES, f"{action} is held by the real role {role!r}")
+
+    # The ones worth stating outright, because getting them wrong is what the
+    # whole guardrail would be judged on.
+    equal(action_roles("add_bug"), [],
+          "anyone can report a bug — a report nobody can file is a bug lost")
+    equal(action_roles("set_blocked"), [],
+          "and saying you are stuck never needs permission")
+    for dev_work in ("move_board_item", "complete_item", "detail_story", "update_bug"):
+        equal(action_roles(dev_work), [], f"{dev_work} is the developers' own work")
+    equal(action_roles("update_me"), [], "and your own name is yours")
+
+    check("PO" in action_roles("triage_idea_to_story"), "the backlog is the PO's")
+    check("Dev" not in action_roles("triage_idea_to_story"),
+          "and triage is not a developer's call")
+    check("SM" in action_roles("plan_sprint"),
+          "a Scrum Master plans the sprint without owning the backlog")
+    check("SM" not in action_roles("triage_idea_to_story"),
+          "which is why the ceremony and the backlog are separate lists")
+    equal(action_roles("update_checklist"), action_roles("update_ledger_config"),
+          "the rules are one set, so Settings cannot disagree with itself")
+    equal(action_roles("nonexistent_action"), [],
+          "an unknown action is open rather than refused, so a typo cannot lock the page")
+
+
+def test_the_workspace_publishes_who_runs_what():
+    """The browser hides a button by reading this, so it has to be served."""
+    import serve
+
+    from agileledger.model import ACTION_ROLES
+
+    with Ledger() as led:
+        vocabulary = serve.Workspace(led.root).overview()["vocabulary"]
+        equal(vocabulary["action_roles"], ACTION_ROLES,
+              "the action-role map reaches the page unchanged")
+        check("triage_idea_to_story" in vocabulary["action_roles"],
+              "including the one the roster restricts most visibly")
+        check("add_bug" not in vocabulary["action_roles"],
+              "while an open action is absent rather than listed as open to all")
+
+
 def test_identity_is_read_from_the_local_file():
     """`Me.local.md` at the ledger root: who the person at *this* clone is.
 

@@ -145,21 +145,33 @@ A person can have either without the other.
 
 ## Roles are a roster, not permissions
 
-**Never tell a user that a role in this file restricts anything, and never gate a command on one.**
-The ledger is Markdown in a git repo: everyone who can clone it can read *and* edit every file,
-`Config.md` included. The dashboard is a server each person runs on their own machine against their
-own clone, with no authentication and no accounts. A command that refused on the grounds of a role
-would be lying to the user about a protection they do not have — and trivially so, because the file
-that says who they are is in their own working tree.
+**Never tell a user that a role in this file restricts anything.** The ledger is Markdown in a git
+repo: everyone who can clone it can read *and* edit every file, `Config.md` included. The dashboard
+is a server each person runs on their own machine against their own clone, with no authentication
+and no accounts. Claiming a role protects something would be lying to the user about a protection
+they do not have — and trivially so, because the file that says who they are is in their own
+working tree.
 
-**One exception, and it is cosmetic.** The dashboard's Settings screen shows the shared rules — the
-ledger config, the estimation scale, the Definition of Ready and Done, the roster — *read-only* to
-anyone whose roster role is not `PO` or `PM`, with a banner naming the owners. It exists to stop the
-accidental edit, which is most unwanted edits. It stops nothing else: that person can rewrite their
-own `Me.local.md`, open `Config.md` in an editor, or POST to the dashboard's action endpoint. Call it
-a guardrail when you describe it, never a permission, and never cite it as the reason a team's rules
-are safe. Nothing hides: the rules are always shown in full, because the people who have to meet the
-Definition of Done need to read it.
+**What the roster does change, and it is cosmetic.** The dashboard reads it twice:
+
+- The **Settings** screen shows the shared rules — the ledger config, the estimation scale, the
+  Definition of Ready and Done, the roster — *read-only* to anyone it is not told is a `PO` or `PM`.
+- **Buttons for actions the roster assigns elsewhere are hidden**: triage, discarding an idea,
+  capturing one, moving a story to an epic, planning and closing the sprint, cutting a release. The
+  board, the bug report, the story detail, the estimate, the blocked flag and everything else a
+  developer does are untouched. `model.ACTION_ROLES` is the whole list, one line per action.
+
+Both exist to stop the accidental edit, which is most unwanted edits. They stop nothing else: that
+person can rewrite their own `Me.local.md`, open `Config.md` in an editor, or POST to the
+dashboard's action endpoint. Nothing is ever *hidden* — the rules are shown in full, the idea inbox
+stays readable, and the command sheet still lists every command with a line saying whose it is —
+because a developer who cannot see the Definition of Done cannot meet it.
+
+**Slash commands do not check.** A command is typed by a person who may well be acting for the
+Product Owner, and refusing it would be obstructive for a guardrail this thin. When a role the
+roster does not give them runs a backlog or ceremony command, **say whose it is in one line and
+offer to carry on** — the same way a Definition-of-Ready gap is reported rather than enforced. Do
+it once per session, not before every command, and never refuse.
 
 What *does* enforce it is the git host. When a team asks how to stop the Definition of Done or the
 estimation scale being changed without the Product Owner, the answer is a `CODEOWNERS` file at the
