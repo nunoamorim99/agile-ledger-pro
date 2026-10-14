@@ -69,6 +69,10 @@ language matches ("new story", "let's plan the sprint", "what merged to main"), 
   This covers the ledger repo too: `ledger_commit` may commit, but pushing is always confirmed.
 - **Session start:** resolve the ledger, read all `<ledger-root>/<repo-slug>/*.md` files first, load
   state silently, give at most a one-line orientation (including which ledger and repo you resolved).
+- **Identity is per-clone, never committed.** Who the person is comes from `Me.local.md` at the ledger
+  root, which git ignores; the shared `Me:` in `Definitions.md` is a fallback only. Never write a
+  person's own name into `Definitions.md`, and never commit `Me.local.md`. When a command needs to
+  know who is asking and nothing says, ask — and offer `/whoami`, which answers it once.
 
 ---
 
@@ -84,6 +88,7 @@ the ledger root's `Config.md`. Both are first-class; read which one you are in b
 ├── agile-ledger/                 ← THE LEDGER REPO — its own git repo, pushed like any other
 │   ├── Registry.md               # the marker + the map: repo slug ↔ code path ↔ remote ↔ sync state
 │   ├── Config.md                 # ledger-wide config (org, commit/push policy, default repo)
+│   ├── Me.local.md               # who *you* are — git-ignored, one per clone
 │   ├── repo-a/                   # one folder per code repo — the eight ledger files
 │   │   ├── Ideas.md … Definitions.md
 │   └── repo-b/
@@ -98,6 +103,7 @@ project-x/                        ← the code repo
 └── agile-ledger/                 ← the ledger, committed with the project
     ├── Registry.md               # the marker; one row, folder `.`
     ├── Config.md                 # layout: flat
+    ├── Me.local.md               # who *you* are — git-ignored, one per clone
     └── Ideas.md … Definitions.md # the eight files, at the root — no per-repo folder
 ```
 
@@ -397,9 +403,11 @@ listed here because they gate everything else.
   Read-only. This is the async-team daily view.
 - **`/my-work <name>`** — One developer's slice of the current sprint: their stories, board column,
   acceptance criteria (from `User-Stories.md`), branch, and any blockers. Read-only. Framed as
-  **workload + blockers**, never a ranking. If `<name>` is omitted, use the `Me:` value from
-  `Definitions.md` if set. Match the name against the ledger root's `## Team` roster when it has one,
-  so `@ada` and `Ada Lovelace` find the same person's work.
+  **workload + blockers**, never a ranking. If `<name>` is omitted, resolve who is asking —
+  `Me.local.md` at the ledger root first, then the shared `Me:` in `Definitions.md` — and say which
+  one you used; with neither, ask rather than guess, and point at `/whoami`. Match the name against
+  the ledger root's `## Team` roster when it has one, so `@ada` and `Ada Lovelace` find the same
+  person's work.
 - **`/start-us <US-ID>`** — Run the **dependency gate**: if any linked dependency is not Done,
   stop and warn, naming it. Otherwise move To Do → In Progress **in `Sprint.md` only** (the epic index
   stays coarse `In Sprint`; the detail stays in `User-Stories.md`) and **offer** the branch
@@ -510,8 +518,10 @@ re-versioned); to change what a story did, write a new story under the epic.
 - **Assignee** (optional): surfaces **workload and blockers**, never a productivity leaderboard.
   Written `@name`. The ledger root's `Config.md` may carry a `## Team` roster of names, roles and
   GitHub handles — offer those names rather than asking for one to be retyped, and resolve a handle
-  to its person. A role in that roster is a **label, never a permission**: see the workspace skill
-  for why nothing can be gated on it, and for the `CODEOWNERS` setup that does protect this file.
+  to its person. Which of them is *you* is a different question, answered per clone in
+  `Me.local.md`, never in the shared `Definitions.md`. A role in the roster is a **label, never a
+  permission**: see the workspace skill for why nothing can be gated on it, and for the `CODEOWNERS`
+  setup that does protect this file.
 
 ---
 

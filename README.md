@@ -101,6 +101,7 @@ developer's working branch.
 ├── agile-ledger/                # ← THE LEDGER REPO — its own git repo, cloned once
 │   ├── Registry.md              # which repos are managed, and where their code is
 │   ├── Config.md                # org, commit/push policy, default repo
+│   ├── Me.local.md              # which of the team *you* are — git-ignored, one per clone
 │   ├── repo-a/                  # the eight ledger files for repo-a
 │   └── repo-b/
 └── repo-a/ · repo-b/            # the code repos — no ledger files in them
@@ -109,6 +110,14 @@ developer's working branch.
 Run `/init-ledger` once. Inside a project it scaffolds the eight files there and then — nothing else to
 do. As its own repo, add each project with `/register-repo`, and every command takes `--repo <slug>` to
 act on another one from anywhere.
+
+**Once per workspace, not once per person.** Whoever sets the ledger up runs `/init-ledger` and writes
+the team into `Config.md`; everybody else clones it and runs **`/whoami`**, which is their whole setup.
+It matches them against the roster — by their `gh` login, then their git name — and records the answer
+in `Me.local.md` at the ledger root, which `.gitignore` keeps out of git. A ledger that already exists
+sends a joiner there rather than asking the setup questions a second time. Identity has to be
+per-clone: a name written into a committed file reaches everyone who clones the ledger and is
+overwritten by the next person to correct it.
 
 Either way the skill finds the ledger the same way: it walks up from wherever you are, checking each
 directory **and its children**, for a `Registry.md` opening with `# Agile-Ledger Registry`. That marker
@@ -174,7 +183,7 @@ scale, your name, and whether the skill may run `git` in `Definitions.md`.
 | 🟠 **Plan &amp; run the sprint** | `/plan-sprint` · `/start-us` · `/start-bug` · `/review` · `/pr` · `/done-us` · `/done-bug` · `/close-sprint` |
 | 🟣 **Inspect** (read-only) | `/dashboard` · `/board` (`/standup`) · `/my-work` · `/status` · `/roadmap` · `/guide` · `/ledger-check` · `/sync-main` |
 | 🔴 **Release** | `/release` · `/changelog` |
-| ⚫ **Ledger &amp; repos** | `/init-ledger` · `/register-repo` · `/migrate-ledger` · `/ledger-commit` · `/discover-repos` · `/workspace-sync` · `/workspace-status` |
+| ⚫ **Ledger &amp; repos** | `/init-ledger` · `/whoami` · `/register-repo` · `/migrate-ledger` · `/ledger-commit` · `/discover-repos` · `/workspace-sync` · `/workspace-status` |
 
 Run **`/guide`** in any session for the command-to-file map and a one-glance state summary. The full
 reference lives in [`plugins/agile-ledger-pro/README.md`](plugins/agile-ledger-pro/README.md), and a printable
@@ -215,6 +224,7 @@ Details in [`plugins/agile-ledger-pro/dashboard/README.md`](plugins/agile-ledger
 ```
 /init-ledger                    # once per workspace — creates the ledger repo
 /register-repo .                # add the project you're standing in
+/whoami                         # once per person — everyone else runs only this
 /idea add Google sign-in to speed up onboarding
 /triage                         # → epic + a few suggested Draft stories
 /detail-us US-014               # → full story in User-Stories.md, linked from the epic

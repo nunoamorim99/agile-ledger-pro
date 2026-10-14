@@ -72,6 +72,11 @@ class Workspace:
             # The team roster from Config.md. A list of names and roles, which
             # is all it is: see model.ROLES for why it is not a permission list.
             "team": resolve.read_team(self.root),
+            # Who the person at *this* clone is, from the git-ignored
+            # Me.local.md. Identity is the one setting that must not be
+            # shared: see resolve.read_me.
+            "me": resolve.read_me(self.root),
+            "me_file": resolve.ME_FILE,
             "repos": repos,
             "git": actions.ledger_status(self.root),
             "vocabulary": {

@@ -10,8 +10,15 @@
 language: English          # language the ledger is written in
 git_execution: off         # off = generate branch/commit/PR text only; on = allow gh/git on confirmation
 estimation: fibonacci      # story-point scale: 1, 2, 3, 5, 8, 13, 21
-Me:                        # your name, used by /my-work when no name is given
+Me:                        # shared fallback only — your own name goes in Me.local.md
 ```
+
+> **`Me:` is shared, so prefer `Me.local.md`.** Every line in this file is committed, this one
+> included — a team each writing their own name here take turns overwriting each other, and under
+> `CODEOWNERS` a developer cannot land the correction at all. Your own name belongs in
+> `Me.local.md` at the ledger root, which `.gitignore` keeps out of git so every clone answers for
+> itself. Run `/whoami` and it is written for you. `Me:` is still read when no local file exists,
+> which is what a ledger with one person on it has always used.
 
 > `git_execution: off` is the safe default. Even when `on`, the skill **never auto-merges** and always
 > confirms before any push or merge. This key covers git in **this project's code repo**; a value set

@@ -930,12 +930,15 @@ def _root_config(repo: Repo) -> tuple:
     return path, mdutil.split_lines(path.read_text(encoding="utf-8"))
 
 
-def _save_root_config(path, lines: list[str]) -> None:
-    """Write Config.md the same way Repo.save writes the eight: temp + replace."""
-    text = "\n".join(lines)
+def _write_text(path, text: str) -> None:
+    """Write one file the way `Repo.save` writes the eight: temp file + replace.
+
+    An interrupted write cannot leave half a file behind, which matters as much
+    for the files at the ledger root as for the eight inside a repo folder.
+    """
     if not text.endswith("\n"):
         text += "\n"
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".Config.md.", suffix=".tmp")
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as out:
             out.write(text)
@@ -944,6 +947,11 @@ def _save_root_config(path, lines: list[str]) -> None:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
+
+
+def _save_root_config(path, lines: list[str]) -> None:
+    """Write Config.md back after an in-place edit of its lines."""
+    _write_text(path, "\n".join(lines))
 
 
 def update_ledger_config(repo: Repo, values=None, **_) -> dict:
@@ -1010,6 +1018,89 @@ def update_team(repo: Repo, people=None, **_) -> dict:
     return {"message": (f"Team roster saved ({len(rows)} "
                         f"{'person' if len(rows) == 1 else 'people'})"),
             "command": "(edit Config.md)"}
+
+
+#: `Me.local.md`, written whole each time — it holds one person, so there is
+#: no hand-written content around it to preserve.
+ME_TEMPLATE = """# Me (local)
+
+> Who you are **on this machine**. `.gitignore` keeps this file out of git, so your name never
+> lands in a commit and never overwrites a teammate's — every clone has its own.
+>
+> Matched against the `## Team` roster in `Config.md`, where a handle and a display name are the
+> same person. Clear it from the dashboard, or delete the file, to be asked again.
+
+```
+name:   {name}
+handle: {handle}
+```
+"""
+
+IGNORE_NOTE = "# Who you are is yours, not the team's — never commit it."
+
+
+def _ensure_ignored(root, name: str) -> bool:
+    """Add ``name`` to the ledger root's `.gitignore` unless it is covered.
+
+    True when the file was changed. The entry goes at the **ledger root** in
+    both placements: git honours a `.gitignore` in a subdirectory, so a flat
+    ledger living inside its project never needs the project's own file
+    touched. Without this the identity file is the next thing someone commits,
+    and the problem it solves comes straight back.
+    """
+    path = root / ".gitignore"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    for line in lines:
+        entry = line.strip()
+        if entry.startswith("#"):
+            continue
+        if entry.lstrip("/") == name:
+            return False
+    block = ([""] if lines and lines[-1].strip() else []) + [IGNORE_NOTE, name]
+    _write_text(path, "\n".join(lines + block))
+    return True
+
+
+def update_me(repo: Repo, name=None, handle=None, **_) -> dict:
+    """Record who the person at this clone is, in the git-ignored `Me.local.md`.
+
+    This is the one setting that must *not* be shared. `Me:` in a project's
+    `Definitions.md` is committed with everything else, so a team all writing
+    their own name there take turns overwriting each other — and in a ledger
+    whose `Definitions.md` is under CODEOWNERS, a developer cannot land the
+    correction at all. Here each clone answers for itself.
+
+    Clearing both fields removes the file. That is not the never-delete rule
+    bending: the rule protects what a human recorded about the *product*, and
+    this holds one machine's note about itself, which the dashboard offers to
+    forget so the next session asks again.
+    """
+    name = str(name or "").strip()
+    handle = str(handle or "").strip().lstrip("@")
+    if name == EMPTY:
+        name = ""
+    path = repo.root / resolve.ME_FILE
+
+    if not name and not handle:
+        if not path.is_file():
+            return {"message": "Nothing to change"}
+        path.unlink()
+        return {"message": "Forgot who you are on this machine",
+                "command": f"(delete {resolve.ME_FILE})"}
+
+    # A handle alone is enough to ask the roster for the display name, which is
+    # what every view shows; the reverse holds too.
+    person = resolve.identify(repo.root, handle or name)
+    if person:
+        name = name or person["name"]
+        handle = handle or person["handle"]
+
+    _write_text(path, ME_TEMPLATE.format(name=name or EMPTY, handle=_at(handle)))
+    ignored = _ensure_ignored(repo.root, resolve.ME_FILE)
+    who = name or f"@{handle}"
+    return {"message": f"You are {who} on this machine"
+                       + (" · added to .gitignore" if ignored else ""),
+            "command": f"(edit {resolve.ME_FILE})"}
 
 
 def update_checklist(repo: Repo, which: str = "", items=None, **_) -> dict:
@@ -1176,8 +1267,14 @@ def check_ledger(repo: Repo, **_) -> dict:
 # Dispatch
 # --------------------------------------------------------------------------
 
-#: Actions that only read. Everything else rebuilds the derived tables and saves.
-READ_ONLY = {"check"}
+#: Actions that write nothing inside a repo folder, so the eight files are
+#: neither rebuilt nor saved afterwards. `check` only reads; the other three
+#: write at the ledger root. Rebuilding for them would mean a developer who
+#: did nothing but say who they are finds three ledger files rewritten,
+#: because a rebuild corrects every stale derived table it meets — true, and
+#: nothing to do with what they asked for. `/ledger-check` is where that
+#: correction belongs.
+OUTSIDE_THE_EIGHT = {"check", "update_me", "update_team", "update_ledger_config"}
 
 ACTIONS = {
     "add_idea": add_idea,
@@ -1204,6 +1301,7 @@ ACTIONS = {
     "update_project_config": update_project_config,
     "update_ledger_config": update_ledger_config,
     "update_team": update_team,
+    "update_me": update_me,
     "update_checklist": update_checklist,
 }
 
@@ -1213,7 +1311,7 @@ def run(repo: Repo, action: str, params: dict) -> dict:
     if action not in ACTIONS:
         raise ActionError(f"unknown action: {action}")
     result = ACTIONS[action](repo, **(params or {}))
-    if action in READ_ONLY:
+    if action in OUTSIDE_THE_EIGHT:
         return result
     repo.rebuild_overviews()
     result["files_written"] = repo.save()

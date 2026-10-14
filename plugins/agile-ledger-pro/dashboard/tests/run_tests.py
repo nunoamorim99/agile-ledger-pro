@@ -886,6 +886,141 @@ def test_team_section_is_created_when_a_ledger_predates_it():
         check(not tail.endswith("\n\n"), "without leaving a blank line at the end")
 
 
+def test_identity_is_read_from_the_local_file():
+    """`Me.local.md` at the ledger root: who the person at *this* clone is.
+
+    The roster says who the team is; this says which of them is you. They are
+    different questions and they live in different files, because the roster is
+    shared and the answer to this one must not be.
+    """
+    with Ledger() as led:
+        equal(resolve.read_me(led.root), {},
+              "a ledger nobody has identified themselves on reads as nobody")
+
+        me = led.root / resolve.ME_FILE
+
+        # A handle is the easier half to be sure of (`gh` knows it); the roster
+        # supplies the display name every view actually shows.
+        me.write_text("```\nhandle: rita\n```\n", encoding="utf-8")
+        equal(resolve.read_me(led.root)["name"], "Rita",
+              "a handle alone resolves to the roster's spelling of the name")
+        equal(resolve.read_me(led.root)["role_name"], "Developer", "and their role")
+        check(resolve.read_me(led.root)["on_roster"], "and is marked as on the roster")
+
+        # And the other way round, because a person typing their own name is
+        # the case with no `gh` in it.
+        me.write_text("```\nname: Leo\n```\n", encoding="utf-8")
+        equal(resolve.read_me(led.root)["handle"], "leo",
+              "a name alone resolves to the roster's handle")
+
+        # Somebody nobody has listed yet still gets to say who they are: the
+        # alternative is that /my-work refuses to work until a PR lands.
+        me.write_text("```\nname: Ana Costa\nhandle: @anac\n```\n", encoding="utf-8")
+        stranger = resolve.read_me(led.root)
+        equal(stranger["name"], "Ana Costa", "an off-roster name is kept as written")
+        equal(stranger["handle"], "anac", "with the @ stripped")
+        equal(stranger["on_roster"], False, "and flagged as not on the roster")
+
+        # The template ships with dashes in it, and a dash is not a person.
+        me.write_text("```\nname:   —\nhandle: —\n```\n", encoding="utf-8")
+        equal(resolve.read_me(led.root), {},
+              "an unfilled file reads as nobody, not as someone called —")
+
+        # The matcher the whole feature rests on.
+        for written in ("rita", "@rita", "Rita", "RITA"):
+            entry = resolve.identify(led.root, written)
+            equal(entry and entry["name"], "Rita", f"{written!r} is Rita")
+        equal(resolve.identify(led.root, "nobody"), None, "a stranger matches no row")
+        equal(resolve.identify(led.root, ""), None, "and a blank matches nobody")
+
+
+def test_identity_is_recorded_and_kept_out_of_git():
+    """`update_me` writes the local file and makes git ignore it.
+
+    The .gitignore half is not a nicety: the first person to commit
+    `Me.local.md` puts their own name back into everybody else's clone, which
+    is the exact failure this file exists to prevent.
+    """
+    with Ledger() as led:
+        result = led.run("update_me", handle="@rita")
+        check("Rita" in result["message"], f"it says who you are: {result['message']!r}")
+        check(".gitignore" in result["message"], "and that it ignored the file")
+        equal(resolve.read_me(led.root)["name"], "Rita", "the name is resolved on the way in")
+
+        ignore = (led.root / ".gitignore").read_text(encoding="utf-8")
+        check(resolve.ME_FILE in ignore.splitlines(), "the entry is a line of its own")
+
+        # Re-running must not keep appending to .gitignore.
+        again = led.run("update_me", name="Leo")
+        equal((led.root / ".gitignore").read_text(encoding="utf-8"), ignore,
+              "a second run leaves .gitignore alone")
+        check(".gitignore" not in again["message"], "and does not claim to have added it twice")
+        equal(resolve.read_me(led.root)["name"], "Leo", "while the identity does change")
+
+        # An existing pattern is respected rather than duplicated.
+        with Ledger() as other:
+            (other.root / ".gitignore").write_text("*.tmp\n/Me.local.md\n", encoding="utf-8")
+            other.run("update_me", name="Sofia")
+            equal((other.root / ".gitignore").read_text(encoding="utf-8"),
+                  "*.tmp\n/Me.local.md\n", "a rooted pattern already covers it")
+
+        # Forgetting is offered because the honest answer to "is this you?" can
+        # become no — a borrowed machine, a new person at the same desk.
+        cleared = led.run("update_me")
+        check("Forgot" in cleared["message"], f"clearing says so: {cleared['message']!r}")
+        equal(resolve.read_me(led.root), {}, "and the identity is gone")
+        check(not (led.root / resolve.ME_FILE).is_file(), "with the file removed")
+        equal(led.run("update_me")["message"], "Nothing to change",
+              "clearing an already-clear identity is not an error")
+
+
+def test_identity_never_lands_in_a_shared_file():
+    """The property the whole design rests on.
+
+    Recording who you are must not touch one byte of anything the team shares.
+    If it ever does, every teammate inherits the first person's name again and
+    we are back to the bug this replaced.
+    """
+    with Ledger() as led:
+        shared = {p: p.read_bytes() for p in
+                  [led.root / "Config.md", led.root / "Registry.md",
+                   *(led.root / "demo-app").iterdir()]}
+
+        led.run("update_me", name="Rita", handle="rita")
+        led.run("update_me", handle="leo")
+        led.run("update_me")
+
+        for path, before in shared.items():
+            equal(path.read_bytes(), before, f"{path.name} is untouched, byte for byte")
+        check(len(shared) == 10, f"and that is all eight plus the two root files ({len(shared)})")
+
+        # The fixture's derived tables are deliberately stale, so a rebuild
+        # would rewrite three of the eight. Saying who you are must not do
+        # that: a developer whose first action on a fresh clone leaves three
+        # ledger files dirty has been handed somebody else's job.
+        equal(actions.run(led.repo(), "update_me", {"handle": "rita"}).get("files_written"), None,
+              "and recording an identity writes nothing in the repo folder at all")
+
+        # The shared `Me:` stays readable, because a one-person ledger has
+        # always used it and must keep working.
+        equal(Repo(led.root, "demo-app").definitions()["config"].get("Me"), "Nuno",
+              "the fallback in Definitions.md is left exactly as it was")
+
+
+def test_the_workspace_publishes_who_you_are():
+    """The browser needs the identity and the file's name to talk about it."""
+    import serve
+
+    with Ledger() as led:
+        led.run("update_me", handle="rita")
+        overview = serve.Workspace(led.root).overview()
+        equal(overview["me"]["name"], "Rita", "the overview carries the identity")
+        equal(overview["me_file"], resolve.ME_FILE, "and the file it came from")
+        from agileledger import commands as cmd
+        check(any(c["name"] == "whoami" for group in cmd.SHEET
+                  for c in group["commands"]), "and /whoami is on the command sheet")
+
+
 def test_settings_edit_the_checklists():
     with Ledger() as led:
         led.run("update_checklist", which="done",
@@ -1262,6 +1397,29 @@ def test_templates_agree_with_the_model():
         check("| Ada Lovelace |" in config, "while still showing the shape to copy")
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+    # Identity has two writers — this command set and the dashboard's You card
+    # — and they must produce the same file, so the template IS what the action
+    # writes rather than a copy of it that can drift.
+    me_template = (references / "Me.local.template.md").read_text(encoding="utf-8")
+    equal(me_template, actions.ME_TEMPLATE.format(name=mdutil.EMPTY, handle=mdutil.EMPTY),
+          "the Me.local template is byte-for-byte the file the dashboard writes")
+    for honest in ("out of git", "never" + chr(10) + "> lands in a commit"):
+        check(honest in me_template, f"the template still says {honest!r}")
+
+    staging = Path(tempfile.mkdtemp(prefix="agile-ledger-me-"))
+    try:
+        (staging / "Me.local.md").write_text(me_template, encoding="utf-8")
+        equal(resolve.read_me(staging), {},
+              "an unfilled template parses as nobody, not as someone called —")
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    # Definitions.md still carries `Me:` for a one-person ledger, and still
+    # says why it is the second choice.
+    defs = (references / "Definitions.template.md").read_text(encoding="utf-8")
+    check("Me:" in defs, "the Definitions template keeps the shared fallback")
+    check("Me.local.md" in defs, "and points at the per-clone file instead")
 
 
 def main() -> int:

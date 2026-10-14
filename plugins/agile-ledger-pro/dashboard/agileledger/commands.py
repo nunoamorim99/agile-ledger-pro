@@ -107,6 +107,9 @@ SHEET: list[dict] = [
         "commands": [
             {"name": "init-ledger", "args": "[path]", "writes": "Registry.md · Config.md",
              "action": None},
+            {"name": "whoami", "args": "[name|@handle]", "writes": "Me.local.md",
+             "action": "update_me",
+             "note": "The session can match your gh login; the page offers the roster."},
             {"name": "register-repo", "args": "<path|remote>", "writes": "Registry.md",
              "action": None},
             {"name": "migrate-ledger", "args": "[path]", "writes": "—", "action": None},

@@ -1226,6 +1226,21 @@ select { color-scheme: inherit; }
   .teamrow .menu-anchor { grid-column: 1 / -1; }
 }
 
+/* ------------------------------------------------------- who you are */
+
+/* One control in pick mode, two fields in typed mode; flex suits both, and
+   it has to override `.setcontrol .menu-anchor { display: block }` above. */
+.setcontrol .youpick { display: flex; gap: 8px; }
+.youpick > * { min-width: 0; }
+.youpick > .pick, .youpick > input { flex: 1 1 0; }
+
+/* The note about a shared `Me:` the local one is shadowing. Indented to the
+   control column so it reads as a footnote to the choice, not a new setting. */
+.set-note {
+  margin: 0; padding: 0 18px 12px;
+  max-width: 84ch; color: var(--ink3);
+}
+
 /* --------------------------------------------------------- the toolbar */
 
 .toolbar {

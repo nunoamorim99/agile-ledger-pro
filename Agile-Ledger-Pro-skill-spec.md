@@ -460,7 +460,7 @@ natural language ("new story", "let's plan the sprint", "what merged to main").
 |---|---|
 | `/plan-sprint` | Propose a Sprint Goal, pull top-ordered **Ready** stories that fit velocity, set assignees, build the board. |
 | `/board` *(alias `/standup`)* | Print the async sprint snapshot — the five columns + blockers. |
-| `/my-work <name>` | One developer's slice: their current-sprint stories, status, AC, branch, blockers. |
+| `/my-work <name>` | One developer's slice: their current-sprint stories, status, AC, branch, blockers. With no name, resolve `Me.local.md` at the ledger root first, then the shared `Me:` in `Definitions.md`; with neither, ask. |
 | `/start-us <US-ID>` | Dependency-gate, To Do → In Progress, offer the branch. |
 | `/review <US-ID>` | In Progress → In Review (code-complete, **on branch, no PR yet**); generate the AC/DoD verification checklist. |
 | `/pr <US-ID>` | In Review → In PR; generate/open the PR from the ledger (only on verified work). |
@@ -780,10 +780,16 @@ in a dedicated **ledger repository** holding one folder per code repo.
 | 7 | Upgrade path | `/migrate-ledger` copies an in-repo folder across **verbatim**, verifies it, then offers to `git rm` it on a branch — never pushing |
 | 8 | Cross-repo scope | Each repo folder keeps its own backlog, sprint, and velocity. Cross-repo references are links (`../repo-b/User-Stories.md#us-021`); there is no shared sprint |
 
-**Commands.** `+/init-ledger`, `+/register-repo`, `+/migrate-ledger`, `+/ledger-commit`;
-`/init-workspace` and `/bootstrap-repo` are retired (replaced by the first two). `/sync-main` and
-`/workspace-sync` now read git in the **code** repo and write only in the **ledger** folder. Count: 33
-commands + 1 alias (`/standup`).
+**Commands.** `+/init-ledger`, `+/whoami`, `+/register-repo`, `+/migrate-ledger`, `+/ledger-commit`;
+`/init-workspace` and `/bootstrap-repo` are retired (replaced by `/init-ledger` and
+`/register-repo`). `/sync-main` and `/workspace-sync` now read git in the **code** repo and write only
+in the **ledger** folder. Count: 35 commands + 1 alias (`/standup`), 36 files in all.
+
+**Identity.** `/init-ledger` is run once per *workspace*; `/whoami` is run once per *person*, on each
+clone. A ledger that already exists sends a joiner to `/whoami` rather than re-running setup, and the
+answer lands in the git-ignored `Me.local.md` at the ledger root — never in `Definitions.md`, whose
+`Me:` is committed and therefore shared. That shared key remains the fallback, so a one-person ledger
+is unaffected.
 
 **What did not change.** The ID system, the two state machines, the two-file story model, the overview
 tables, anchors and links, duplicate detection, epic version control, estimation/velocity, vertical

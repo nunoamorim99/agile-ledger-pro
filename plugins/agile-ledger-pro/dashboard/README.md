@@ -59,9 +59,9 @@ rather than a copy that goes stale. Each row copies its command on click; the on
 carry a button that opens the right form.
 
 **Settings** is a screen of its own: everything the skill reads before it acts — this project's
-`Definitions.md` (your name, language, estimation scale, whether git may run in the code repo) and
-the ledger's `Config.md` (placement, default project, org, commit and push policy, branches) — plus
-the team roster and the team's own Definition of Ready and Definition of Done. Saving writes the
+`Definitions.md` (language, estimation scale, whether git may run in the code repo) and the ledger's
+`Config.md` (placement, default project, org, commit and push policy, branches) — plus the team
+roster, who you are, and the team's own Definition of Ready and Definition of Done. Saving writes the
 same keys a person would type, and leaves the comments and alignment in those files exactly where
 they were.
 
@@ -69,6 +69,16 @@ The **team roster** is the `## Team` table in `Config.md`: a name, a role and a 
 person. Those are the names offered when you assign work — so you can assign a story to someone who
 has none yet — and what `Me` is matched against, which is why a story filed under `@rita` shows up
 as Rita and answers a filter for her.
+
+**Who you are** is the one setting on that screen that is not the team's, so it has its own file:
+`Me.local.md` at the ledger root, which `.gitignore` keeps out of git. It has to be separate. `Me:`
+in `Definitions.md` is committed like every other line there, so one person's name reaches everyone
+who clones the ledger and is overwritten by the next person to correct it — and once `Definitions.md`
+is under `CODEOWNERS`, a developer cannot land that correction at all. The **You** card picks you off
+the roster, writes the local file, and adds it to `.gitignore` the first time. The shared `Me:` is
+still read when no local file exists, which is what a one-person ledger has always used; when both
+exist the card says which one is winning. In a Claude Code session, `/whoami` does the same job and
+can match you by your `gh` login.
 
 A role in that roster is a **label, not a permission.** Everyone who can clone the ledger can read
 and edit every file in it, this one included, and this server has no accounts — it is something you

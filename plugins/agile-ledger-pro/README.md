@@ -30,6 +30,7 @@ command also takes `--repo <slug>` to act on another project.
 
 **Set up the ledger**
 - `/init-ledger [path]` — create the ledger repo (`Registry.md` + `Config.md`); run once per workspace
+- `/whoami [name|@handle]` — say which of the team you are; run once per *person*, on each clone. Writes the git-ignored `Me.local.md` at the ledger root, never the shared `Definitions.md`
 - `/register-repo <path|remote> [--from-git]` — add a code repo: its folder, the eight files, a Registry row
 - `/migrate-ledger [path]` — move a pre-2.0 in-repo `Agile-Ledger/` into the ledger repo, then clean the code repo
 - `/ledger-commit` — review and commit the ledger repo (push only on confirmation)

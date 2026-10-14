@@ -22,6 +22,7 @@ folder to find both is the pain. This layer makes it one command.
 ├── agile-ledger/                # THE LEDGER REPO — its own git repo
 │   ├── Registry.md              # marker + map: repo slug ↔ code path ↔ remote ↔ sync state
 │   ├── Config.md                # org, clone target, filters, commit/push policy, default repo
+│   ├── Me.local.md              # who *this clone's* person is — git-ignored, never committed
 │   ├── repo-a/                  # the eight ledger files for repo-a
 │   └── repo-b/
 └── repo-a/ · repo-b/            # the code repos — no ledger files in them
@@ -57,10 +58,14 @@ the Registry — nothing is written into the code repo to make it work.
   never with invented value or acceptance criteria, never Ready/Delivered, never overwriting human content.
 - Sweeps read-only by default; every state-changing action is confirmed. Registry rows are never deleted.
 
-## 5. Commands (7; namespaced under the plugin)
+## 5. Commands (8; namespaced under the plugin)
 
 - `/init-ledger [path]` — create the ledger repo: `Registry.md` + `Config.md`, org + clone target,
   offered `git init`. Setup only; refuses to nest a second ledger root.
+- `/whoami [name|@handle]` — who the person at *this clone* is, matched against the `## Team` roster
+  (`gh api user` first, then the git name) and recorded in the git-ignored `Me.local.md` at the ledger
+  root. Run once per person, not per workspace: a joiner runs this *instead* of `/init-ledger`, which
+  refuses to re-run setup on a ledger that exists. Identity is never written to a shared file.
 - `/register-repo <path|remote> [--from-git]` — add a code repo: its folder with the eight files (only
   if absent) and a Registry row; `--from-git` seeds proposed drafts from history. Writes nothing into
   the code repo.
@@ -91,7 +96,13 @@ agile-ledger/                 # the ledger repo
 ├── Registry.md               # managed repos: slug, code path, remote, status, last-sync SHA, last
 │                             # swept (never-delete rows); its heading is the ledger-root marker
 ├── Config.md                 # default_repo, org, clone_target, include/exclude, ledger_commit,
-│                             # ledger_push, ledger_branch, git_execution, setup_branch
+│                             # ledger_push, ledger_branch, git_execution, setup_branch; plus the
+│                             # `## Team` roster (name, role, GitHub handle) — shared, and a label
+│                             # rather than a permission
+├── Me.local.md               # who *this clone's* person is — git-ignored, never committed. The
+│                             # answer to "which of the team am I", which must not be shared: a
+│                             # name in a committed file reaches every clone and is overwritten by
+│                             # the next person to correct it. `.gitignore` carries this filename.
 └── <repo-slug>/              # the core skill's eight files, one folder per managed repo
 ```
 

@@ -731,12 +731,34 @@ function samePerson(a, b) {
 
 /* There is no global "viewing as": every view shows the whole team, and you
  * narrow it where the question is asked — the Backlog's Assignee filter, or
- * the My work lens, which is about whoever `Me` names in Settings. */
+ * the My work lens, which is about whoever you are.
+ *
+ * And who you are is read from `Me.local.md` at the ledger root, which is
+ * git-ignored and belongs to one clone. It has to be: `Me:` in a project's
+ * Definitions.md is committed with every other line in that file, so a team
+ * writing their own names there take turns overwriting each other, and in a
+ * ledger whose Definitions.md is under CODEOWNERS a developer cannot land the
+ * correction at all. The shared `Me:` is still read, second, because a solo
+ * ledger has always used it and nothing should break under one.
+ */
+const myIdentity = () => (state.workspace && state.workspace.me) || null;
+
 const myName = () => {
+  const me = myIdentity();
+  if (me && isSet(me.name)) return me.name;
   const config = state.repo && state.repo.definitions && state.repo.definitions.config;
   // `Me: @nuno` and `Me: Nuno` have to find the same work, and only the roster
   // can reconcile them; without one, the name is taken as written.
   return displayName(isSet(config && config.Me) ? config.Me : '');
+};
+
+/** The shared `Me:` still in Definitions.md, when a local identity shadows it. */
+const shadowedMe = () => {
+  const me = myIdentity();
+  if (!me || !isSet(me.name)) return '';
+  const config = state.repo && state.repo.definitions && state.repo.definitions.config;
+  const written = isSet(config && config.Me) ? nameOf(config.Me) : '';
+  return written && !samePerson(written, me.name) ? written : '';
 };
 
 /* ------------------------------------------------------------------ views */
@@ -1968,8 +1990,9 @@ function myWorkColumn() {
     col.append(el('div', { class: 'card needs' },
       el('div', { class: 'need-empty' },
         el('h3', { text: 'Tell the ledger who you are' }),
-        el('p', { text: 'Set “Me” in Settings and this becomes your work. '
-          + 'It is the same name /my-work uses.' }),
+        el('p', { text: 'Pick yourself in Settings and this becomes your work. It is saved on '
+          + 'this machine only, so your teammates keep their own, and it is the same '
+          + 'name /my-work uses.' }),
         el('button', { class: 'btn primary', style: 'margin-top:12px', type: 'button',
           onclick: () => goTo('settings') }, 'Open Settings'))));
     return col;
@@ -3347,7 +3370,6 @@ function copyReleaseNotes() {
  */
 
 const PROJECT_SETTINGS = [
-  { key: 'Me', label: 'Me', hint: 'the name /my-work uses when none is given' },
   { key: 'language', label: 'Language', hint: 'the language the ledger is written in' },
   { key: 'estimation', label: 'Estimation scale',
     options: ['fibonacci', 'tshirt', 'linear'], hint: 'the story-point scale' },
@@ -3396,6 +3418,7 @@ VIEWS.settings = () => {
     }));
 
   wrap.append(teamCard());
+  wrap.append(youCard());
 
   wrap.append(checklistCard('Definition of Ready', 'ready',
     repo.definitions.definition_of_ready || [],
@@ -3459,6 +3482,131 @@ function pickField(name, options, value) {
     }));
   anchor.append(button, hidden);
   return anchor;
+}
+
+/* ------------------------------------------------------------------- you --
+ * Identity is the one setting on this screen that is *not* the team's, so it
+ * gets its own card and its own file. See `myName` for why it cannot live in
+ * Definitions.md beside everything else.
+ */
+
+/** The identity control: pick yourself off the roster, or type a name.
+ *
+ * Returns `{ node, read }` — `read()` gives `{ name, handle }` from whichever
+ * mode is live. Two text fields rather than one in the typed mode, because
+ * someone who is not on the roster has no row to borrow a handle from, and
+ * work filed under `@anac` only reaches Ana Costa if she has said that is her.
+ */
+function youField(me) {
+  const people = roster();
+  const node = el('span', { class: 'menu-anchor youpick' });
+  // Picking "Someone else" swaps the control out, so `read` is reassigned and
+  // the closure returned below has to look it up rather than capture it. The
+  // default is never reached; it is here so a future branch cannot throw.
+  let read = () => ({ name: '', handle: '' });
+
+  const typeMode = (name0, handle0) => {
+    const name = el('input', { class: 'control', type: 'text', value: name0 || '',
+      placeholder: 'Your name', 'aria-label': 'Your name' });
+    const handle = el('input', { class: 'control', type: 'text', value: handle0 || '',
+      placeholder: 'github-handle', 'aria-label': 'Your GitHub handle' });
+    read = () => ({ name: String(name.value || '').trim(),
+      handle: String(handle.value || '').trim().replace(/^@/, '') });
+    node.replaceChildren(name, handle);
+    return name;
+  };
+
+  // Gated on the roster, as the assignee control is: with nobody listed there
+  // is no list to pick from, and a picker of one option is worse than a field.
+  if (!people.length) {
+    typeMode(me && me.name, me && me.handle);
+    return { node, read: () => read() };
+  }
+
+  const known = me && isSet(me.name) ? me : null;
+  const button = el('button', { class: 'control pick', type: 'button',
+    'aria-haspopup': 'listbox' },
+    el('span', { class: 'pick-text', text: known ? known.name : 'Nobody yet' }),
+    chevron());
+  const rows = [
+    ...people.map((p) => ({ value: p.handle || p.name, label: p.name,
+      sub: p.role_name || p.role || '', tail: p.handle ? `@${p.handle}` : '' })),
+    { value: TYPE_A_NAME, label: 'Someone else…', sub: 'not on the roster' },
+  ];
+  let picked = known ? { name: known.name, handle: known.handle } : null;
+  read = () => picked || { name: '', handle: '' };
+
+  button.addEventListener('click', () => showMenu(button, 'You', rows,
+    (known && (known.handle || known.name)) || '', (choice) => {
+      if (choice === TYPE_A_NAME) {
+        typeMode('', '').focus();
+        return;
+      }
+      const person = personFor(choice);
+      picked = { name: person ? person.name : choice, handle: person ? person.handle : '' };
+      const text = button.querySelector('.pick-text');
+      if (text) text.textContent = picked.name;
+    }));
+  node.append(button);
+  return { node, read: () => read() };
+}
+
+/** Who you are on this machine — a joiner's whole setup, in one card. */
+function youCard() {
+  const me = myIdentity();
+  const file = (state.workspace && state.workspace.me_file) || 'Me.local.md';
+  const card = el('div', { class: 'card setcard' });
+  card.append(el('div', { class: 'gh' },
+    el('h2', { text: 'You' }),
+    el('span', { class: 'c mono', text: file })));
+  card.append(el('p', { class: 'hint set-blurb',
+    text: `Who you are on this ledger. Saved in ${file} at the ledger root, which git `
+        + 'ignores: it stays on this machine, so your name never lands in a commit and your '
+        + 'teammates keep their own. It is what “My work” and /my-work use when no name is given.' }));
+
+  const field = youField(me);
+  const row = el('div', { class: 'setrow' });
+  row.append(el('div', { class: 'setlabel' },
+    el('span', { class: 'setlabel-main', text: 'I am' }),
+    el('span', { class: 'setlabel-key mono', text: 'name' })));
+  row.append(el('div', { class: 'setcontrol' }, field.node,
+    el('span', { class: 'hint',
+      text: me && isSet(me.name) && !me.on_roster
+        ? `${me.name} is not on the team roster — add the row there to be offered for assignment`
+        : 'matched against the roster, so @rita and Rita find the same work' })));
+  card.append(row);
+
+  /* A stale shared `Me:` is not an error — it is what the ledger used before
+   * this file existed — but a reader deserves to know which one is winning. */
+  const shadowed = shadowedMe();
+  if (shadowed) {
+    card.append(el('p', { class: 'hint set-note',
+      text: `Definitions.md still says Me: ${shadowed}. That line is shared with everyone who `
+          + 'clones the ledger, so the name above wins here. Clear it there once the whole team '
+          + 'has their own.' }));
+  }
+
+  const status = el('span', { class: 'hint grow' });
+  const save = async (values, message) => {
+    await act('update_me', values, message);
+    await refreshWorkspaceQuietly();
+    render();
+  };
+  card.append(el('div', { class: 'setfoot' },
+    me && isSet(me.name)
+      ? el('button', { class: 'btn small ghost', type: 'button',
+          onclick: () => save({}, 'Forgotten on this machine') }, 'Forget me')
+      : null,
+    status,
+    el('button', { class: 'btn primary', type: 'button', onclick: () => {
+      const chosen = field.read();
+      if (!chosen.name && !chosen.handle) {
+        status.textContent = 'Pick a name first.';
+        return;
+      }
+      save(chosen, 'Saved on this machine only');
+    } }, 'Save')));
+  return card;
 }
 
 /** The CODEOWNERS lines this roster implies, or null when it implies none.

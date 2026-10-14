@@ -104,13 +104,14 @@ def project_name(root: Path) -> str:
     return root.parent.name or root.name
 
 
-def read_config(root: Path) -> dict[str, str]:
-    """Parse the fenced ``key: value`` block in the ledger root's Config.md."""
+def fenced_config(lines: list[str]) -> dict[str, str]:
+    """``key: value`` pairs from the fenced blocks of a ledger config file.
+
+    The shape `Config.md`, `Definitions.md` and `Me.local.md` all use: a fenced
+    block of `key: value` lines with `#` comments, which reads as a code block
+    in any Markdown preview instead of as a broken table.
+    """
     config: dict[str, str] = {}
-    path = root / CONFIG_FILE
-    if not path.is_file():
-        return config
-    lines = mdutil.split_lines(path.read_text(encoding="utf-8"))
     in_fence = False
     for line in lines:
         if line.strip().startswith("```"):
@@ -123,6 +124,14 @@ def read_config(root: Path) -> dict[str, str]:
         if m:
             config[m.group(1)] = m.group(2).strip()
     return config
+
+
+def read_config(root: Path) -> dict[str, str]:
+    """Parse the fenced ``key: value`` block in the ledger root's Config.md."""
+    path = root / CONFIG_FILE
+    if not path.is_file():
+        return {}
+    return fenced_config(mdutil.split_lines(path.read_text(encoding="utf-8")))
 
 
 TEAM_HEADING = "team"
@@ -188,6 +197,66 @@ def config_owners(root: Path) -> list[str]:
 
     return [p["handle"] for p in read_team(root)
             if p["role"] in CONFIG_OWNERS and p["handle"]]
+
+
+#: Per-person identity, local to one clone and ignored by git.
+ME_FILE = "Me.local.md"
+
+
+def identify(root: Path, written: str) -> dict[str, str] | None:
+    """The roster entry a written name or handle refers to, if any.
+
+    `@rita` and `Rita` are the same person, so both have to find the same row.
+    The browser does this too (``personFor`` in app.js); keep them in step.
+    """
+    key = (written or "").strip().lstrip("@").lower()
+    if not key or key == mdutil.EMPTY:
+        return None
+    for person in read_team(root):
+        if person["name"].lower() == key:
+            return person
+        if person["handle"] and person["handle"].lower() == key:
+            return person
+    return None
+
+
+def read_me(root: Path) -> dict[str, str | bool]:
+    """Who the person at *this clone* is, from the git-ignored ``Me.local.md``.
+
+    Identity is the one thing in a ledger that is not the team's. ``Me:`` in a
+    project's ``Definitions.md`` is committed like every other line in it, so a
+    name written there reaches everybody who clones the ledger and is then
+    overwritten by whoever edits it next — which is the whole problem this file
+    exists to solve. It sits at the ledger root, holds one person, and is
+    ignored by git, so three developers can each be themselves.
+
+    Returns ``{}`` when nobody at this clone has said who they are. The caller
+    then falls back to the shared ``Me:``, which is what a solo ledger has
+    always used and still works.
+    """
+    path = root / ME_FILE
+    if not path.is_file():
+        return {}
+    values = fenced_config(mdutil.split_lines(path.read_text(encoding="utf-8")))
+
+    def value(key: str) -> str:
+        raw = values.get(key, "").strip()
+        return "" if raw in ("", "-", mdutil.EMPTY) else raw
+
+    name, handle = value("name"), value("handle").lstrip("@")
+    if not name and not handle:
+        return {}
+    # The file may carry only one of the two, and a handle is the easier thing
+    # to be sure of; the roster knows the other half.
+    person = identify(root, name or handle)
+    return {
+        "name": person["name"] if person else name or handle,
+        "handle": person["handle"] if person else handle,
+        "role": person["role"] if person else "",
+        "role_name": person["role_name"] if person else "",
+        "on_roster": bool(person),
+        "source": ME_FILE,
+    }
 
 
 def read_registry(root: Path) -> list[dict[str, str]]:

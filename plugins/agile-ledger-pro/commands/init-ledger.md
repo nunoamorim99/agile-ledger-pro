@@ -4,7 +4,17 @@ argument-hint: [path]
 ---
 Using the **Agile-Ledger Pro Workspace** skill, create the ledger. **Ask where it should live before creating anything** — this is the one decision that is awkward to undo, and both answers are right for different situations.
 
-## 1. Ask which placement
+## 1. First: is there already a ledger?
+
+Resolve the ledger root before asking anything (see **Where the ledger lives**). This is the common case once a team is more than one person: the Product Manager set the ledger up and everyone else *joins* it.
+
+**A ledger root already exists at or above the cwd** → say where it is and **do not run the setup below.** One ledger per workspace, and the placement, the org, the roster and the team's rules are already decided — asking again invites a second answer to a settled question. The only thing left for this person is who *they* are, so run **`/whoami`** instead: it matches them against the `## Team` roster in `Config.md` (by their `gh` login, then their git name) and records the answer in the git-ignored `Me.local.md`. Say that is what you are doing and why, in a line.
+
+If they meant to add another project to the existing ledger, that is `/register-repo`. If they have pre-2.0 `Agile-Ledger/` folders inside code repos, point them at `/migrate-ledger`.
+
+Everything below is for a workspace with **no** ledger in it yet.
+
+## 2. Ask which placement
 
 Look at where the user is standing and propose the fitting default, but always let them choose:
 
@@ -28,7 +38,7 @@ One folder per code repo. A backlog edit never lands on a developer's working br
 
 Name the trade in one line each and ask. If `$ARGUMENTS` gives a path, still ask which shape that path should hold.
 
-## 2. Create it
+## 3. Create it
 
 Place it at `$ARGUMENTS` if given; otherwise `./agile-ledger` for **A** (inside the current repo) or `./agile-ledger` beside the code repos for **B**. Write `Registry.md` and `Config.md` from the `agile-ledger-pro` skill's `references/` templates — keep `Registry.md`'s `# Agile-Ledger Registry` heading exactly as it is, since that heading is the marker the resolver looks for. Set `layout:` in `Config.md` to `flat` or `nested` to match the answer.
 
@@ -36,9 +46,9 @@ Place it at `$ARGUMENTS` if given; otherwise `./agile-ledger` for **A** (inside 
 
 **For B (its own repo):** write only `Registry.md` + `Config.md`, ask for the GitHub org/owner and the clone target, and offer `git init` plus a first commit, telling the user to create the remote and push it themselves. Do **not** scan, clone, or register anything — that is `/discover-repos` and `/register-repo`.
 
-## 3. Ask who is on the team, and offer to protect the rules
+## 4. Ask who is on the team, and offer to protect the rules
 
-Ask for the team: a name, a role (`PO` · `PM` · `SM` · `Dev` · `QA` · `Design`) and a GitHub handle each, and write them into the `## Team` table in `Config.md`. Skippable — one person working alone does not need a roster, and it can be filled in later from the dashboard's Settings or by hand. Explain it in one line: these are the names offered when assigning work, and what `Me:` is matched against.
+Ask for the team: a name, a role (`PO` · `PM` · `SM` · `Dev` · `QA` · `Design`) and a GitHub handle each, and write them into the `## Team` table in `Config.md`. Skippable — one person working alone does not need a roster, and it can be filled in later from the dashboard's Settings or by hand. Explain it in one line: these are the names offered when assigning work, and what each person is matched against when they run `/whoami`.
 
 Then, **only when a `PO` or `PM` has a handle**, offer to write `CODEOWNERS` at the ledger root:
 
@@ -51,8 +61,12 @@ Say plainly what it is for, because it is the only part of this that enforces an
 
 Tell the user the one manual step: branch protection has to be switched on in the repository's settings (or with `gh api`), and `CODEOWNERS` does nothing on its own. Never claim the rules are protected until they confirm they have done it. Skip this whole step for **A** when the ledger has no remote yet, and mention it can be added later.
 
-## 4. Stop conditions
+## 5. Say who you are — and keep it out of the commit
 
-If a ledger root already exists at or above the cwd, report where it is and stop: one ledger per workspace. If the user has pre-2.0 `Agile-Ledger/` folders inside code repos, point them at `/migrate-ledger` next.
+Finish by recording the person creating the ledger, the same way every joiner will: write `Me.local.md` at the ledger root from `references/Me.local.template.md`, and append `Me.local.md` to `<ledger-root>/.gitignore` (creating it if needed).
 
-Switching placement later is a move, not a conversion: the eight files are the same either way. Say so if the user is unsure — it is a reason to pick the simpler option now rather than deliberate.
+Do this even for a team of one. Their own name must not go into `Definitions.md`'s `Me:` — that line is committed, so it would reach every clone and be overwritten by the first teammate who corrects it. Keep `Me.local.md` out of the first commit, and say in a line that identity stays on each machine while the roster is shared.
+
+## 6. Stop conditions
+
+Never scaffold a ledger root somewhere you guessed — if the path is unclear, ask. Switching placement later is a move, not a conversion: the eight files are the same either way. Say so if the user is unsure — it is a reason to pick the simpler option now rather than deliberate.

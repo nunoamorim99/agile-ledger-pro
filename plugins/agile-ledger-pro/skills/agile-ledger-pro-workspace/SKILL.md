@@ -6,7 +6,8 @@ description: >-
   `Agile-Ledger/` folder, discover repositories on a GitHub org (including ones nobody told you about),
   run a single cross-repo "what changed while I was away" sync, reconstruct undocumented work from git
   history into proposed drafts, and commit the ledger repo. Use this skill whenever the user talks about
-  setting up or moving the ledger, the ledger repo, a registry of repos, multiple repos, a workspace root,
+  setting up or moving the ledger, joining a ledger somebody else created, who they are on a ledger,
+  the ledger repo, a registry of repos, multiple repos, a workspace root,
   "what changed across all projects", detecting new repositories, onboarding a repo, syncing everything
   after time off, or turning git commits and PRs into epics/stories. The per-repo PM rules live in the
   `agile-ledger-pro` skill; this one owns where the ledger is and which repos it covers.
@@ -22,6 +23,7 @@ holding one folder per code repo:
 ├── agile-ledger/                 ← THE LEDGER REPO — its own git repo, pushed like any other
 │   ├── Registry.md               # the marker + the map: repo slug ↔ code path ↔ remote ↔ sync state
 │   ├── Config.md                 # org, clone target, filters, commit/push policy, default repo
+│   ├── Me.local.md               # who *you* are — git-ignored, one per clone
 │   ├── repo-a/                   # the eight ledger files for repo-a
 │   └── repo-b/
 └── repo-a/ · repo-b/             ← the code repos, with NO ledger files in them
@@ -61,6 +63,9 @@ two git repos at once:
   invent the "so that…". Never overwrite anything a human wrote.
 - **Sweeps are read-only by default.** Every state-changing action (clone, register, draft, commit) is
   surfaced and confirmed, then performed — not assumed.
+- **Never commit `Me.local.md`, and never write a person's own name into a shared file.** Identity
+  belongs to one clone; `Definitions.md` and `Config.md` belong to the team. A name in a committed
+  file reaches everyone who clones and is overwritten by the next person to fix it.
 - **Never delete** rows from the Registry; mark them `archived`/`gone` instead.
 - **Migration copies before it removes.** Verify the files landed in the ledger repo (and are committed)
   before offering to delete anything from a code repo.
@@ -87,6 +92,9 @@ git_execution:  off                        # off = text only; on = allow git in 
 setup_branch:   agile-ledger-setup         # branch used in a code repo to remove a migrated folder
 ```
 
+Beside those two sits **`Me.local.md`** — who *this* clone's person is, git-ignored and never
+committed. It is not part of the ledger's content; see **Joining a ledger somebody else created**.
+
 `Config.md` also holds the team, under a `## Team` heading — optional, and absent in older ledgers:
 
 ```
@@ -102,6 +110,38 @@ written rather than coerced. Use the roster when a command needs a person: to of
 `Assignee` instead of asking the user to retype one, and to resolve `Me:` in a project's
 `Definitions.md` whether it is written as a handle (`@ada`) or a display name (`Ada Lovelace`) —
 `@ada` and `Ada Lovelace` are the same person, and `/my-work` must treat them so.
+
+## Joining a ledger somebody else created
+
+The second person onwards does **not** set the ledger up again. A Product Manager runs
+`/init-ledger`, chooses the placement, writes the `## Team` roster and the team's rules; everyone
+else clones and has one question to answer — *which of these people am I?*
+
+So before asking a setup question, **resolve the ledger first**. A ledger root at or above the cwd
+means this is a joiner, and the answer is `/whoami`, not `/init-ledger`. Re-running setup on a
+joiner is the failure to avoid: it invites a second answer to a question the team has settled, and
+it writes their name into a file everybody shares.
+
+**Identity is per-clone; the roster is shared.** `Me:` in a project's `Definitions.md` is committed
+like every other line in that file, so one person's name there reaches every clone and is
+overwritten by the next person to correct it — and when the team has put `Definitions.md` under
+`CODEOWNERS`, a developer cannot land the correction at all. Each person's own name therefore goes
+in `Me.local.md` at the **ledger root**:
+
+```
+name:   Rita Soares
+handle: rita
+```
+
+written from `references/Me.local.template.md`, with `Me.local.md` appended to
+`<ledger-root>/.gitignore` — the ledger root in both placements, since git honours a `.gitignore` in
+a subdirectory. **Never commit it**, and exclude it from a `ledger_commit: auto` commit. The shared
+`Me:` is still read when no local file exists, because that is what a one-person ledger has always
+used and it must keep working.
+
+Being on the roster and having said who you are are two different things: a name in `## Team` means
+the team can assign you work, and `Me.local.md` means this clone knows which of them to filter by.
+A person can have either without the other.
 
 ## Roles are a roster, not permissions
 
@@ -171,7 +211,13 @@ children**, so it finds `~/Projetos/agile-ledger` from `~/Projetos/repo-a`, and
 ## Commands
 
 ### `/init-ledger [path]`
-Create the ledger. **Ask which placement first** — it is the one decision that is awkward to undo.
+**Resolve the ledger before asking anything.** A ledger root at or above the cwd means this person is
+joining one that exists: say where it is, do **not** run any of the setup below, and run `/whoami`
+instead (see **Joining a ledger somebody else created**). Another project for an existing ledger is
+`/register-repo`; a pre-2.0 in-repo folder is `/migrate-ledger`.
+
+With no ledger in the workspace, create one. **Ask which placement first** — it is the one decision
+that is awkward to undo.
 Propose the fitting default from where the user is standing (inside a code repo → `flat`; in a
 directory holding several code repos → `nested`), name the trade in a line each, and let them choose.
 
@@ -186,8 +232,30 @@ exactly as it is, and set `layout` to match.
   `git init` + a first commit (`chore: init agile-ledger`), telling the user to create the remote and
   push it themselves. Do **not** scan or clone.
 
-If a ledger root already exists at or above the cwd, say where it is and stop — one ledger per
-workspace.
+Then ask for the `## Team` roster, offer `CODEOWNERS` when a `PO`/`PM` has a handle, and finish by
+recording the creator through the `/whoami` step — `Me.local.md` plus its `.gitignore` entry — even
+for a team of one. Their own name must not go into `Definitions.md`'s shared `Me:`.
+
+### `/whoami [name|@handle]`
+Record who the person at this clone is — the whole of a joiner's setup, and the last step of
+`/init-ledger` for whoever creates the ledger.
+
+1. Resolve the ledger root. **No ledger** → nothing to join; offer `/init-ledger`. **`Me.local.md`
+   already names someone** → say who, in one line, and stop; an argument overrides it.
+2. Try to work out who they are, strongest signal first: `gh api user --jq .login` against the
+   roster's GitHub column (`gh` is authenticated as them, so this one is theirs rather than a
+   guess), then `git config user.name` against the Name column, then the local part of
+   `git config user.email`.
+3. **Propose, never assert.** One match → name the signal that matched and wait for a yes; a
+   self-declared git name and a shared machine both give wrong answers, and a wrong `Me` silently
+   shows somebody else's sprint. No match, several matches, or no shell → list the roster
+   (name · role · handle) and ask, offering *not on the roster* as a real answer. No roster at all →
+   just ask for their name.
+4. Write `Me.local.md` at the ledger root from the template and make sure `.gitignore` covers it.
+5. **Not on the roster** → record the identity anyway, then say what is missing: no row in `## Team`
+   means nobody can assign them work from the dashboard. Adding the row edits `Config.md`, the file
+   most often under `CODEOWNERS`, so offer the two honest routes — ask the `PO`/`PM`, or open a PR —
+   and never claim a protected branch accepted a push it will refuse.
 
 ### `/register-repo <path|remote> [--from-git]`
 Add one code repo to the ledger.
@@ -300,7 +368,8 @@ judgment over what is real, what the user value is, and how it's sliced.
 
 ## Idempotency
 
-Everything here is safe to re-run. `/init-ledger` refuses to nest a second ledger root; discovery diffs
+Everything here is safe to re-run. `/init-ledger` refuses to nest a second ledger root and sends a
+joiner to `/whoami`; `/whoami` reports the identity already recorded instead of asking again; discovery diffs
 against the Registry; `/register-repo` skips a folder that already exists; `/migrate-ledger` re-run after
 a partial move reports what is already in place instead of copying over it; sweeps only look at commits
 after each repo's recorded last-sync SHA; reconstructed items only ever appear once in the Inbox (don't
