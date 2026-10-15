@@ -1,7 +1,7 @@
 {
   "extraKnownMarketplaces": {
     "nunoamorim99": {
-      "source": { "source": "github", "repo": "nunoamorim99/agile-ledger-pro" }
+      "source": { "source": "github", "repo": "nunoamorim99/claude-skills" }
     }
   },
   "enabledPlugins": {

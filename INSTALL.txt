@@ -46,7 +46,7 @@ FIRST RUN
 Prefer automatic updates? Install via the marketplace instead and you get new versions
 without re-downloading:
 
-  /plugin marketplace add nunoamorim99/agile-ledger-pro
+  /plugin marketplace add nunoamorim99/claude-skills
   /plugin install agile-ledger-pro@nunoamorim99
 
 Latest bundles: https://github.com/nunoamorim99/agile-ledger-pro/releases/latest

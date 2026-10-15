@@ -49,7 +49,7 @@ as `/agile-ledger-pro:idea`.
 
 ## Cutting a release
 
-1. Bump `version` in **both** manifests (see [Versioning](#versioning) below).
+1. Bump `version` in `plugins/agile-ledger-pro/.claude-plugin/plugin.json` (see [Versioning](#versioning) below).
 2. Commit and push to `main`.
 3. Tag and push:
 
@@ -62,21 +62,19 @@ to a GitHub Release. A mismatched tag fails the build rather than publishing a m
 
 ## Versioning
 
-The version appears in two manifests and must match in both:
+The version lives in one place: `plugins/agile-ledger-pro/.claude-plugin/plugin.json`.
 
-- `.claude-plugin/marketplace.json` — `metadata.version` and the plugin entry's `version`
-- `plugins/agile-ledger-pro/.claude-plugin/plugin.json` — `version`
-
-CI verifies that the marketplace entry and `plugin.json` agree on both `name` and `version`.
+The marketplace catalog is not in this repo. Agile-Ledger Pro is listed in
+[`nunoamorim99/claude-skills`](https://github.com/nunoamorim99/claude-skills), which points at
+`plugins/agile-ledger-pro/` here, so a release needs no change there.
 
 ## CI
 
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) runs on every push and pull
 request:
 
-1. Both plugin manifests parse as JSON.
-2. The marketplace entry resolves to a real plugin directory, names and versions agree, and the
-   required `commands/` and `skills/agile-ledger-pro/SKILL.md` are present.
+1. `plugin.json` parses, has the right name and a version.
+2. The required `commands/`, `skills/agile-ledger-pro/SKILL.md` and `dashboard/serve.py` are present.
 3. Both install bundles build and contain the files each one is supposed to ship.
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on a `v*` tag and publishes the
