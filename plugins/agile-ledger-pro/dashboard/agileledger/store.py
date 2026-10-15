@@ -92,6 +92,10 @@ class Repo:
     def ideas(self) -> list[dict]:
         return parse.parse_ideas(self.lines("Ideas.md"))
 
+    def triaged_ideas(self) -> list[dict]:
+        """Ideas that left the inbox, with where each went. The funnel's far end."""
+        return parse.parse_triaged_ideas(self.lines("Ideas.md"))
+
     def epics(self) -> list[dict]:
         epics = parse.parse_epics(self.lines("Epic-Backlog.md"))
         for epic in epics:
@@ -135,6 +139,7 @@ class Repo:
         return {
             "slug": self.slug,
             "ideas": self.ideas(),
+            "triaged_ideas": self.triaged_ideas(),
             "epics": epics,
             "stories": stories,
             "bug_inbox": self.bug_inbox(),

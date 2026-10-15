@@ -111,6 +111,44 @@ def _drop_inbox_line(repo: Repo, file_name: str, line_no: int | None) -> None:
         handle.replace((line_no, line_no + 1), [])
 
 
+TRIAGED_HEADING = "## \u2705 Triaged"
+
+
+def _retire_idea(repo: Repo, line_no: int | None, became: str = "", note: str = "") -> None:
+    """Move an idea from the inbox to ``## ✅ Triaged`` with where it went.
+
+    Ideas used to be deleted here, the one place the ledger threw anything
+    away — and with them went every "ideas per month" and "how many ideas
+    become stories" a PM could ever ask for. Now the line is kept, with
+    ``→ US-012 (date)`` or ``→ discarded (date): why``, newest first.
+
+    A file from before the section existed gets it appended, once.
+    """
+    if line_no is None:
+        return
+    handle = repo.file("Ideas.md")
+    if not (0 <= line_no < len(handle.lines)):
+        return
+    raw = handle.lines[line_no]
+    m = re.match(r"^\s{0,3}[-*]\s+(.*)$", raw)
+    if not m:
+        return
+    tail = f"{became} ({today()})" if became else f"discarded ({today()})"
+    if note:
+        tail += f": {note}"
+    line = f"- {m.group(1).strip()} \u2192 {tail}"
+    handle.replace((line_no, line_no + 1), [])
+
+    if not mdutil.find_section(handle.lines, 2, lambda t: "triaged" in t.lower()):
+        lines = handle.lines
+        at = len(lines)
+        while at > 0 and not lines[at - 1].strip():
+            at -= 1
+        handle.insert(at, ["", TRIAGED_HEADING, "",
+                           "_Every idea that left the inbox, and where it went. Never deleted._", ""])
+    repo.append_to_section("Ideas.md", 2, lambda t: "triaged" in t.lower(), [line], top=True)
+
+
 def triage_idea_to_epic(repo: Repo, title: str, goal: str = "", area: str = "",
                         target: str = "", idea_line: int | None = None, **_) -> dict:
     title = (title or "").strip()
@@ -120,7 +158,7 @@ def triage_idea_to_epic(repo: Repo, title: str, goal: str = "", area: str = "",
     epic = {
         "id": epic_id, "title": title, "emoji": "\U0001f4a1",
         "target": target or EMPTY, "goal": goal or "", "area": area or "",
-        "history": [], "stories": [],
+        "created": today(), "history": [], "stories": [],
         "rollup": {"stories_done": 0, "stories_total": 0,
                    "points_done": 0, "points_total": 0},
     }
@@ -129,7 +167,7 @@ def triage_idea_to_epic(repo: Repo, title: str, goal: str = "", area: str = "",
                                   render.render_epic(epic)):
         raise ActionError("Epic-Backlog.md has no '## Epics' section")
     repo.bump_next_id("EPIC", epic_id)
-    _drop_inbox_line(repo, "Ideas.md", idea_line)
+    _retire_idea(repo, idea_line, became=epic_id)
     return {"message": f"{epic_id} created", "id": epic_id,
             "command": f"/triage  (idea → {epic_id})"}
 
@@ -154,13 +192,13 @@ def triage_idea_to_story(repo: Repo, epic_id: str, title: str, priority: str = "
     epic["stories"] = index
     repo.file("Epic-Backlog.md").replace(epic["span"], render.render_epic(epic))
     repo.bump_next_id("US", story_id)
-    _drop_inbox_line(repo, "Ideas.md", idea_line)
+    _retire_idea(repo, idea_line, became=story_id)
     return {"message": f"{story_id} added to {epic_id} as a Draft",
             "id": story_id, "command": f"/triage  (idea → {story_id})"}
 
 
-def discard_idea(repo: Repo, idea_line: int | None = None, **_) -> dict:
-    _drop_inbox_line(repo, "Ideas.md", idea_line)
+def discard_idea(repo: Repo, idea_line: int | None = None, reason: str = "", **_) -> dict:
+    _retire_idea(repo, idea_line, note=(reason or "").strip())
     return {"message": "Idea discarded"}
 
 
@@ -177,6 +215,7 @@ def triage_bug(repo: Repo, title: str, severity: str = "minor", priority: str = 
         "severity": severity or "minor", "priority": priority or EMPTY,
         "estimate": EMPTY,
         "reported_by": f"{reported_by} ({today()})" if reported_by else today(),
+        "triaged": today(),
         "area": area or EMPTY, "assignee": EMPTY,
         "relates_to": (relates_to or "").strip().upper(),
         "symptom": symptom or title, "steps": [],
@@ -251,6 +290,8 @@ def detail_story(repo: Repo, story_id: str, title: str = "", story: str = "",
         "criteria": [c for c in (criteria or []) if str(c).strip()],
         "dependencies": [d.strip().upper() for d in (dependencies or []) if d.strip()],
         "notes": notes or "",
+        # The day it became Ready: one end of cycle time. The other is Delivered.
+        "ready": today(),
         "extra_blocks": [],
     }
     section = _find_state_section(repo.file("User-Stories.md"), "Ready", STORY_STATES)
@@ -529,14 +570,16 @@ def pull_into_sprint(repo: Repo, items=None, **_) -> dict:
                 warnings.append(f"{item_id} depends on {', '.join(unmet)} (not Delivered).")
             board["To Do"].append({"id": item_id, "title": story["title"],
                                    "points": story.get("estimate", ""),
-                                   "assignee": story.get("assignee", "")})
+                                   "assignee": story.get("assignee", ""),
+                                   "pulled": today()})
         elif item_id in bugs:
             bug = bugs[item_id]
             if bug["state"] not in ("Triaged", "Confirmed", "In Sprint"):
                 warnings.append(f"{item_id} is {bug['state']}, not pullable.")
             board["To Do"].append({"id": item_id, "title": bug["title"],
                                    "points": bug.get("estimate", ""),
-                                   "assignee": bug.get("assignee", "")})
+                                   "assignee": bug.get("assignee", ""),
+                                   "pulled": today()})
         else:
             raise ActionError(f"{item_id} is not a detailed story or a registered bug")
         added.append(item_id)
@@ -654,12 +697,35 @@ def move_board_item(repo: Repo, item_id: str, column: str, **_) -> dict:
     board[column].append(found)
     _write_board(repo, board)
 
+    # Started goes on the item's own entry, not the board line: the board is
+    # rebuilt at every sprint and the entry is where the date has to outlive
+    # it. First time only — a card bounced back to To Do and started again
+    # keeps the day the work really began.
+    if column == "In Progress":
+        _stamp_started(repo, item_id)
+
     result = {"message": f"{item_id} → {column}", "warnings": warnings,
               "branch": _branch_name(repo, item_id)}
     if column == "In Progress":
         result["command"] = f"/start-us {item_id}" if item_id.startswith("US") \
             else f"/start-bug {item_id}"
     return result
+
+
+def _stamp_started(repo: Repo, item_id: str) -> None:
+    """Write ``Started: <today>`` on a story or bug that has none yet."""
+    for story in repo.stories():
+        if story["id"] == item_id:
+            if not story.get("started"):
+                story["started"] = today()
+                repo.file("User-Stories.md").replace(story["span"], render.render_story(story))
+            return
+    for bug in repo.bugs():
+        if bug["id"] == item_id:
+            if not bug.get("started"):
+                bug["started"] = today()
+                repo.file("Bugs.md").replace(bug["span"], render.render_bug(bug))
+            return
 
 
 def _branch_name(repo: Repo, item_id: str) -> str:
@@ -676,6 +742,7 @@ def _branch_name(repo: Repo, item_id: str) -> str:
 def set_blocked(repo: Repo, item_id: str, reason: str = "", blocked: bool = True, **_) -> dict:
     item_id = (item_id or "").strip().upper()
     sprint = repo.sprint()
+    previous = next((b for b in sprint["blocked"] if b["id"] == item_id), None)
     entries = [b for b in sprint["blocked"] if b["id"] != item_id]
     title = ""
     for items in sprint["board"].values():
@@ -683,8 +750,11 @@ def set_blocked(repo: Repo, item_id: str, reason: str = "", blocked: bool = True
             if item["id"] == item_id:
                 title = item["title"]
     if blocked:
+        # Editing the reason must not reset the clock: blocked time is
+        # measured from the day the flag first went up.
+        since = (previous or {}).get("since") or today()
         entries.append({"id": item_id, "title": title,
-                        "reason": reason or "blocked"})
+                        "reason": reason or "blocked", "since": since})
 
     handle = repo.file("Sprint.md")
     span = mdutil.find_section(handle.lines, 2, lambda t: "blocked" in t.lower())

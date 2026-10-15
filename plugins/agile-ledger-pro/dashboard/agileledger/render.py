@@ -81,8 +81,11 @@ def render_story(story: dict) -> list[str]:
     deps = story.get("dependencies") or []
     out += [f"**Dependencies:** {DOT.join(link(d) for d in deps) if deps else EMPTY}", ""]
 
-    if story.get("delivered"):
-        out += [f"**Delivered:** {story['delivered']}", ""]
+    # The flow dates, in the order they happen. Each is written only when set,
+    # so an entry from before they existed comes back byte for byte.
+    for label, key in (("Ready", "ready"), ("Started", "started"), ("Delivered", "delivered")):
+        if story.get(key):
+            out += [f"**{label}:** {story[key]}", ""]
 
     for block in story.get("extra_blocks") or []:
         out += _render_extra(block)
@@ -128,9 +131,10 @@ def render_epic(epic: dict) -> list[str]:
         "",
         f"**Area:** {_v(epic.get('area'))}",
         "",
-        "**History:**",
-        "",
     ]
+    if epic.get("created"):
+        out += [f"**Created:** {epic['created']}", ""]
+    out += ["**History:**", ""]
     out += [f"- {h}" for h in epic.get("history") or []]
     if epic.get("history"):
         out.append("")
@@ -202,8 +206,9 @@ def render_bug(bug: dict) -> list[str]:
     else:
         out += [f"**Assessment** _({label})_", ""]
 
-    if bug.get("fixed"):
-        out += [f"**Fixed:** {bug['fixed']}", ""]
+    for label, key in (("Triaged", "triaged"), ("Started", "started"), ("Fixed", "fixed")):
+        if bug.get(key):
+            out += [f"**{label}:** {bug[key]}", ""]
 
     for block in bug.get("extra_blocks") or []:
         out += _render_extra(block)
@@ -379,12 +384,21 @@ def board_line(item: dict) -> str:
     if item.get("assignee") and item["assignee"] != EMPTY:
         assignee = item["assignee"]
         parts.append(assignee if assignee.startswith("@") else "@" + assignee)
+    # Work added after planning carries the day it arrived, which is what
+    # "scope changed mid-sprint" is measured from. Planned items carry nothing.
+    if item.get("pulled"):
+        parts.append(f"pulled {item['pulled']}")
     return "- " + DOT.join(parts)
 
 
 def blocked_line(item: dict) -> str:
     reason = item.get("reason") or "blocked"
-    return f"- {link(item['id'])} {DASH} {_v(item.get('title'))}{DOT}{reason}"
+    line = f"- {link(item['id'])} {DASH} {_v(item.get('title'))}{DOT}{reason}"
+    # "since" is the date the flag went up: blocked time is reason + duration,
+    # and a flag with no date can only ever say the first half.
+    if item.get("since"):
+        line += f"{DOT}since {item['since']}"
+    return line
 
 
 __all__ = [

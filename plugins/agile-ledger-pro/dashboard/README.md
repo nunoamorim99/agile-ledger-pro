@@ -31,10 +31,16 @@ The ledger Markdown is the source of truth; this is a view onto it, not a second
   a byte-identical file (`tests/run_tests.py::test_rerender_is_byte_identical`), so a ledger diff
   only ever shows the change you actually made. Fields the dashboard does not model are carried
   through untouched.
+- **It records when, not just what.** A story carries `Ready`, `Started` and `Delivered`; a bug
+  `Triaged`, `Started` and `Fixed`; an epic `Created`; a board line pulled in after planning says
+  `pulled <date>` and a blocked one `since <date>`. Each is written when it happens and never
+  otherwise, so an entry from before these existed re-renders byte for byte. They are what lead
+  time, cycle time, blocked time and scope change are computed from.
 - **Writes are atomic.** Each file is written to a temp file beside it and moved into place, so an
   interrupted write cannot leave a half-written ledger.
 - **Nothing is deleted and no ID is reused.** Items move between sections and keep their row
-  forever. The next free ID is the greater of the counter and the highest ID actually present, so
+  forever. Ideas included: triage and discard move an idea to `## ✅ Triaged` in `Ideas.md` with where
+  it went, which is what lets the funnel from idea to story be counted later. The next free ID is the greater of the counter and the highest ID actually present, so
   a counter rewound by a bad hand-edit still cannot hand out an ID that is in use.
 - **One writer at a time.** The server serialises writes, so two browser tabs cannot interleave.
 - **Both placements work.** A ledger with its own repo (`layout: nested`) keeps one folder per code

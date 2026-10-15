@@ -7,6 +7,7 @@
 ## Config
 
 ```
+methodology: scrum         # scrum | kanban — per project; the dashboard and the sprint commands adapt
 language: English          # language the ledger is written in
 git_execution: off         # off = generate branch/commit/PR text only; on = allow gh/git on confirmation
 estimation: fibonacci      # story-point scale: 1, 2, 3, 5, 8, 13, 21

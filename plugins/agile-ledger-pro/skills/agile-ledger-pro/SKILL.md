@@ -351,13 +351,17 @@ listed here because they gate everything else.
   in `Ideas.md`. No ID, no dedup, no rewrite, no questions. Instant and safe mid-work.
 - **`/triage`** — Process each idea in `Ideas.md`: run **duplicate detection** (four outcomes below);
   decide **epic or story**; assign the next typed ID; set `Parent`, priority, area; rewrite **in the
-  user's voice, in English**; write it into `Epic-Backlog.md` and **clear the line from `Ideas.md`**.
+  user's voice, in English**; write it into `Epic-Backlog.md` and **move the line to `## ✅ Triaged`
+  in `Ideas.md`** as `→ US-xxx (date)` — or `→ discarded (date): why` — never delete it: the funnel
+  from idea to story is only answerable later if the ideas are still there. A new epic gets
+  `**Created:** <date>`.
   When an idea becomes a **new epic**, also propose a few **suggested 📝 Draft stories** (index lines)
   under it, derived from the epic goal — present them for confirmation, never as truth. When an idea maps
   to an **existing epic**, add it as a single 📝 Draft story-index line under it. No AC or estimate yet
   (that's `/detail-us`). Reconcile each `Next free ID`.
 - **`/detail-us <US-ID>`** — Fill one story to Ready: `As a <role>, I want <goal>, so that <benefit>`,
-  Gherkin acceptance criteria, Fibonacci `Estimate`, `Layer`, `Dependencies`. Apply **INVEST**; flag
+  Gherkin acceptance criteria, Fibonacci `Estimate`, `Layer`, `Dependencies`, and `**Ready:** <today>`
+  (the start of lead time). Apply **INVEST**; flag
   horizontal slicing (see Vertical slicing). **Write the full entry into `User-Stories.md` under
   `## ✅ Ready`, flip the epic index line in `Epic-Backlog.md` to Ready, and refresh both top tables.** Move
   to Ready only once the **Definition of Ready** holds. (Stories are born as Draft index lines at
@@ -375,7 +379,8 @@ listed here because they gate everything else.
   date to the 🐛 Inbox in `Bugs.md`. No ID, no questions. The symptom stays in the reporter's voice.
 - **`/triage-bug`** — Process the bug Inbox: duplicate check; assign the next `BUG-xxx`; set **severity**
   (`critical / major / minor / trivial`) and **priority** (🔴🟡🟢); link `relates to [US-xxx](User-Stories.md#us-xxx)`/area;
-  move to 🔍 Triaged; refresh the bug dashboard. Flag a `critical` bug as **pull-now** (it may warrant
+  move to 🔍 Triaged with `**Triaged:** <today>`; refresh the bug dashboard. Flag a `critical` bug as
+  **pull-now** (it may warrant
   interrupting the current sprint rather than waiting for planning). Separate from `/triage` so an empty
   bug Inbox costs nothing.
 - **`/find-bug <BUG-ID>`** — **Read-only** code investigation. Try to reproduce and locate the cause, then
@@ -383,8 +388,9 @@ listed here because they gate everything else.
   files)**. *Honesty guardrail:* write a field only if you **confirm it from the code** (`confirmed`) or
   the **reporter supplied it** (`reported`); otherwise mark it `unconfirmed — needs input` and ask. Never
   invent a repro or a root cause. Never edit code. On success the bug moves 🔍 Triaged → 🔬 Confirmed.
-- **`/start-bug <BUG-ID>`** — Move To Do → In Progress on the board; offer the branch `bug-<id>-<slug>`
-  (lowercase). Git only if opted in.
+- **`/start-bug <BUG-ID>`** — Move To Do → In Progress on the board and write `**Started:** <today>`
+  on the bug's entry the first time (a bounce back to To Do keeps the original); offer the branch
+  `bug-<id>-<slug>` (lowercase). Git only if opted in.
 - **`/done-bug <BUG-ID>`** — Move In PR → ✅ Fixed (gated by the fix verified against the repro). Move the
   entry to `## ✅ Fixed` in `Bugs.md`, remove it from the board, and record a line in the 🚧 Increment of
   `Releases.md` tagged **Fixed**. Refresh the bug dashboard.
@@ -393,7 +399,9 @@ listed here because they gate everything else.
 
 - **`/plan-sprint`** — Propose a **Sprint Goal**; pull top-ordered ✅ Ready stories **and** triaged/confirmed
   **bugs** (highest priority first — a 🔴 critical bug sits above stories) whose points fit recent
-  **velocity** (from `Sprints-History.md`); optionally set `Assignee`; write the new sprint header + board
+  **velocity** (from `Sprints-History.md`); optionally set `Assignee`; write the new sprint header + board.
+  Work pulled in **after** planning ends its board line `· pulled <date>`, and a 🚧 Blocked line ends
+  `· since <date>` — the date the flag first went up, never moved when the reason is edited
   into `Sprint.md` with each item in **To Do** (by ID reference). **Move each pulled story to `## 🏃 In
   Sprint` in `User-Stories.md` (mirror its epic index line) and each pulled bug to `🛠️ In Sprint` in
   `Bugs.md`; refresh all top tables.** Honour the dependency gate. Bug points are optional (count toward
@@ -409,8 +417,9 @@ listed here because they gate everything else.
   the ledger root's `## Team` roster when it has one, so `@ada` and `Ada Lovelace` find the same
   person's work.
 - **`/start-us <US-ID>`** — Run the **dependency gate**: if any linked dependency is not Done,
-  stop and warn, naming it. Otherwise move To Do → In Progress **in `Sprint.md` only** (the epic index
-  stays coarse `In Sprint`; the detail stays in `User-Stories.md`) and **offer** the branch
+  stop and warn, naming it. Otherwise move To Do → In Progress in `Sprint.md`, write
+  `**Started:** <today>` on the story's entry in `User-Stories.md` **the first time only** (the epic
+  index stays coarse `In Sprint`) and **offer** the branch
   `us-014-slug` (lowercase). Only run git if execution is opted in; otherwise just hand over the name.
 - **`/review <US-ID|BUG-ID>`** — Move In Progress → In Review. Work is code-complete **on the branch, no
   PR yet**. Generate a verification checklist: for a story, the acceptance criteria as Given/When/Then +

@@ -167,6 +167,48 @@ def _entries(lines: list[str], start: int, end: int, level: int) -> list[dict]:
 # Ideas.md
 # --------------------------------------------------------------------------
 
+def parse_triaged_ideas(lines: list[str]) -> list[dict]:
+    """The ``## ✅ Triaged`` section: every idea that left the inbox, and where to.
+
+    ``- 2026-03-01 — weekly digest email → US-012 (2026-03-04)`` or
+    ``… → discarded (2026-03-04): already covered by US-009``. Ideas used to
+    be deleted at triage, which made "ideas per month" and the idea → story
+    funnel impossible to ever compute, and was the one place the ledger threw
+    something away.
+    """
+    span = mdutil.find_section(lines, 2, lambda t: "triaged" in t.lower())
+    if not span:
+        return []
+    start, end = span
+    mask = comment_mask(lines)
+    out = []
+    for i in range(start + 1, end):
+        if mask[i]:
+            continue
+        m = re.match(r"^\s{0,3}[-*]\s+(.*)$", lines[i])
+        if not m or not m.group(1).strip():
+            continue
+        text = m.group(1).strip()
+        date = ""
+        dm = re.match(r"^(\d{4}-\d{2}-\d{2})\s*" + mdutil.DASH + r"\s*(.*)$", text)
+        if dm:
+            date, text = dm.group(1), dm.group(2).strip()
+        outcome, became, when, note = "", "", "", ""
+        om = re.match(r"^(.*?)\s*→\s*(.*)$", text)
+        if om:
+            text, tail = om.group(1).strip(), om.group(2).strip()
+            tm = re.match(r"^((?:US|EPIC)-\d+|discarded)\s*(?:\((\d{4}-\d{2}-\d{2})\))?\s*:?\s*(.*)$",
+                          tail, re.IGNORECASE)
+            if tm:
+                target = tm.group(1)
+                outcome = "discarded" if target.lower() == "discarded" else "promoted"
+                became = "" if outcome == "discarded" else target.upper()
+                when, note = tm.group(2) or "", tm.group(3).strip()
+        out.append({"date": date, "text": text, "outcome": outcome, "became": became,
+                    "triaged": when, "note": note, "line": i})
+    return out
+
+
 def parse_ideas(lines: list[str]) -> list[dict]:
     span = mdutil.find_section(lines, 2, lambda t: "inbox" in t.lower())
     if not span:
@@ -256,7 +298,7 @@ def parse_epics(lines: list[str]) -> list[dict]:
         history_block = _block(blocks, "History")
         history = bullets(history_block["body"], 0, len(history_block["body"])) if history_block else []
 
-        known = {"stories", "history", "goal", "area"}
+        known = {"stories", "history", "goal", "area", "created"}
         extra = [b for b in blocks if b["label"].lower() not in known]
 
         out.append({
@@ -265,6 +307,7 @@ def parse_epics(lines: list[str]) -> list[dict]:
             "emoji": emoji,
             "target": clean(target),
             "goal": _block_text(blocks, "Goal"),
+            "created": _block_text(blocks, "Created"),
             "area": _block_text(blocks, "Area"),
             "history": history,
             "stories": index,
@@ -324,7 +367,7 @@ def parse_stories(lines: list[str]) -> list[dict]:
                                                   strip_links(deps_text), re.IGNORECASE)]
 
             known = {"story", "acceptance criteria", "dependencies", "notes",
-                     "delivered", "reason", "what shipped"}
+                     "ready", "started", "delivered", "reason", "what shipped"}
             extra = [{"label": b["label"], "inline": b["inline"], "body": b["body"]}
                      for b in blocks if b["label"].lower() not in known]
 
@@ -347,6 +390,12 @@ def parse_stories(lines: list[str]) -> list[dict]:
                 "criteria_met": criteria_met,
                 "dependencies": deps,
                 "dependencies_text": deps_text,
+                # The flow dates. Optional, and absent from every file written
+                # before they existed: a story has always carried one date
+                # (Delivered), which says what shipped but not how long it
+                # took. Ready and Started are what cycle time is made of.
+                "ready": _block_text(blocks, "Ready"),
+                "started": _block_text(blocks, "Started"),
                 "delivered": _block_text(blocks, "Delivered"),
                 "notes": _block_text(blocks, "Notes"),
                 "extra_blocks": extra,
@@ -420,7 +469,7 @@ def parse_bugs(lines: list[str]) -> list[dict]:
                              section_state or "Triaged")
 
             known = {"symptom", "steps to reproduce", "expected", "actual",
-                     "assessment", "notes", "fixed"}
+                     "assessment", "notes", "triaged", "started", "fixed"}
             extra = [{"label": b["label"], "inline": b["inline"], "body": b["body"]}
                      for b in blocks if b["label"].lower() not in known]
 
@@ -446,6 +495,8 @@ def parse_bugs(lines: list[str]) -> list[dict]:
                 "actual": _block_text(blocks, "Actual"),
                 "assessment": assessment,
                 "assessment_confidence": assess_confidence,
+                "triaged": _block_text(blocks, "Triaged"),
+                "started": _block_text(blocks, "Started"),
                 "fixed": _block_text(blocks, "Fixed"),
                 "notes": _block_text(blocks, "Notes"),
                 "extra_blocks": extra,
@@ -516,12 +567,19 @@ def parse_sprint(lines: list[str]) -> dict:
             if not m:
                 continue
             parts = [p.strip() for p in m.group(2).split(mdutil.MIDDOT)]
+            since = ""
+            if len(parts) > 1:
+                sm = re.fullmatch(r"since\s+(\d{4}-\d{2}-\d{2})", parts[-1])
+                if sm:
+                    since = sm.group(1)
+                    parts = parts[:-1]
             blocked.append({
                 "id": m.group(1).upper(),
                 "title": parts[0] if parts else "",
                 # Everything after the title says why it is blocked, which is the
                 # part a reader actually needs. Keep it whole.
                 "reason": (" " + mdutil.MIDDOT + " ").join(p for p in parts[1:] if p),
+                "since": since,
                 "text": text,
             })
 
@@ -550,12 +608,16 @@ def _board_item(raw: str) -> dict | None:
         return None
     rest = [p.strip() for p in m.group(2).split(mdutil.MIDDOT)]
     item = {"id": m.group(1).upper(), "title": rest[0] if rest else "",
-            "points": "", "assignee": ""}
+            "points": "", "assignee": "", "pulled": ""}
     for part in rest[1:]:
         if part.startswith("@"):
             item["assignee"] = part
         elif re.fullmatch(r"\d+\s*pts?", part):
             item["points"] = re.sub(r"\s*pts?$", "", part)
+        else:
+            pm = re.fullmatch(r"pulled\s+(\d{4}-\d{2}-\d{2})", part)
+            if pm:
+                item["pulled"] = pm.group(1)
     return item
 
 

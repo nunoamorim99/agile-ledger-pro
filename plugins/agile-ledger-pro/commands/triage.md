@@ -10,7 +10,7 @@ For each idea in the resolved repo folder's `Ideas.md`:
 2. Decide whether it is an **Epic** or a **User Story** — same user goal as an existing epic → a new User Story under that epic; a new goal → a new epic, cross-linked `[EPIC-xxx](Epic-Backlog.md#epic-xxx)`.
 3. Assign the next sequential typed ID (recompute from the highest existing ID of that type), and set `Parent`, priority, and area.
 4. Rewrite it in the user's voice, in English.
-5. Write it into `Epic-Backlog.md` and **clear the line from `Ideas.md`**. Reconcile each `Next free ID`.
+5. Write it into `Epic-Backlog.md` and **move the line to `## ✅ Triaged` in `Ideas.md` with where it went**. Reconcile each `Next free ID`.
    - If the idea becomes a **new epic**, also propose a few **suggested 📝 Draft story-index lines** under it, derived from the epic goal. Present them for the user's confirmation — they are proposals, not truth.
    - If it maps to an **existing epic**, add it as a single **📝 Draft** story-index line under that epic.
 

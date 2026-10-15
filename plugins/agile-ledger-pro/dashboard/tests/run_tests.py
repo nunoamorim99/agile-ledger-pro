@@ -155,7 +155,7 @@ def test_entries_round_trip():
             equal(len(back), 1, f"{story['id']} renders as exactly one entry")
             for key in ("id", "title", "parent", "priority", "estimate", "area",
                         "layer", "assignee", "story", "criteria", "criteria_met",
-                        "dependencies", "notes", "delivered"):
+                        "dependencies", "notes", "ready", "started", "delivered"):
                 equal(back[0][key], story[key], f"{story['id']}.{key} round-trip")
 
         for bug in repo.bugs():
@@ -164,12 +164,13 @@ def test_entries_round_trip():
             for key in ("id", "title", "severity", "priority", "state", "estimate",
                         "reported_by", "area", "assignee", "relates_to", "symptom",
                         "steps", "steps_confidence", "expected", "actual",
-                        "assessment", "assessment_confidence", "notes", "fixed"):
+                        "assessment", "assessment_confidence", "notes",
+                        "triaged", "started", "fixed"):
                 equal(back[0][key], bug[key], f"{bug['id']}.{key} round-trip")
 
         for epic in repo.epics():
             back = parse.parse_epics(["## Epics", ""] + render.render_epic(epic))
-            for key in ("id", "title", "target", "goal", "area", "history", "stories"):
+            for key in ("id", "title", "target", "goal", "area", "created", "history", "stories"):
                 equal(back[0][key], epic[key], f"{epic['id']}.{key} round-trip")
 
 
@@ -886,6 +887,144 @@ def test_team_section_is_created_when_a_ledger_predates_it():
         check(not tail.endswith("\n\n"), "without leaving a blank line at the end")
 
 
+def test_flow_dates_are_stamped_once_and_kept():
+    """Phase 0 of the insights work: the ledger starts recording *when*.
+
+    A story used to carry one date (Delivered), which says what shipped and
+    nothing about how long it took. Ready and Started are what lead time and
+    cycle time are made of; Triaged and Created do the same for bugs and
+    epics; `pulled` and `since` on the board are where scope change and
+    blocked time come from. Every one is optional, so a file written before
+    they existed must re-render byte for byte — the round-trip test above
+    covers that; this one covers the stamping.
+    """
+    with Ledger() as led:
+        def text(name):
+            return (led.root / "demo-app" / name).read_text(encoding="utf-8")
+
+        # Draft -> Ready stamps Ready, and only Ready.
+        led.run("detail_story", story_id="US-004", story="As a user",
+                criteria=["Given x, when y, then z"], estimate="3")
+        story = next(s for s in led.repo().stories() if s["id"] == "US-004")
+        equal(story["ready"], actions.today(), "Ready is the day it was detailed")
+        equal(story["started"], "", "and it has not started")
+        check("**Ready:** " in text("User-Stories.md"), "written as its own block")
+
+        # Pulling in after planning is stamped on the board line.
+        led.run("pull_into_sprint", items=["US-004"])
+        board = led.repo().sprint()["board"]
+        pulled = next(i for i in board["To Do"] if i["id"] == "US-004")
+        equal(pulled["pulled"], actions.today(), "a mid-sprint pull carries the day it arrived")
+        planned = next(i for i in board["In Progress"] if i["id"] == "US-002")
+        equal(planned["pulled"], "", "while a planned item carries nothing")
+
+        # Entering In Progress stamps Started on the entry — first time only.
+        led.run("move_board_item", item_id="US-004", column="In Progress")
+        story = next(s for s in led.repo().stories() if s["id"] == "US-004")
+        equal(story["started"], actions.today(), "Started is the day work began")
+        # The bounce has to cross a day boundary to prove anything: on the same
+        # day a re-stamp writes the same value and nothing can tell. So the
+        # first start is moved into the past by hand before the bounce.
+        path = led.root / "demo-app" / "User-Stories.md"
+        path.write_text(text("User-Stories.md").replace(
+            f"**Started:** {actions.today()}", "**Started:** 2026-01-05"), encoding="utf-8")
+        led.run("move_board_item", item_id="US-004", column="To Do")
+        led.run("move_board_item", item_id="US-004", column="In Progress")
+        story = next(s for s in led.repo().stories() if s["id"] == "US-004")
+        equal(story["started"], "2026-01-05",
+              "a card bounced back and started again keeps the day it really began")
+        equal(text("User-Stories.md").count("**Started:**"), 1, "as one line, not two")
+
+        # A blocked flag carries since, and editing the reason keeps it.
+        led.run("set_blocked", item_id="US-004", reason="waiting on design")
+        first = next(b for b in led.repo().sprint()["blocked"] if b["id"] == "US-004")
+        equal(first["since"], actions.today(), "the flag carries the day it went up")
+        equal(first["reason"], "waiting on design", "with the reason kept whole")
+        sprint_path = led.root / "demo-app" / "Sprint.md"
+        sprint_path.write_text(text("Sprint.md").replace(
+            f"since {actions.today()}", "since 2026-01-05"), encoding="utf-8")
+        led.run("set_blocked", item_id="US-004", reason="still waiting")
+        again = next(b for b in led.repo().sprint()["blocked"] if b["id"] == "US-004")
+        equal(again["since"], "2026-01-05",
+              "editing the reason a week later does not reset the clock")
+        equal(again["reason"], "still waiting", "though the reason does change")
+        check("since 2026-01-05" in text("Sprint.md"), "written on the blocked line")
+
+        # Bugs and epics get their own stamps.
+        led.run("triage_bug", title="Totals off by one", severity="minor",
+                priority="\U0001f7e1", reported_by="Ana")
+        bug = next(b for b in led.repo().bugs() if b["title"] == "Totals off by one")
+        equal(bug["triaged"], actions.today(), "a triaged bug knows the day")
+        idea = led.repo().ideas()[0]
+        led.run("triage_idea_to_epic", title="Digest emails", goal="g", idea_line=idea["line"])
+        epic = next(e for e in led.repo().epics() if e["title"] == "Digest emails")
+        equal(epic["created"], actions.today(), "a new epic knows the day it was opened")
+
+        # The old entries carry none of this, and say so rather than lie.
+        old = next(s for s in led.repo().stories() if s["id"] == "US-001")
+        equal((old["ready"], old["started"]), ("", ""),
+              "a story from before the dates existed has none, not a guess")
+
+
+def test_ideas_are_retired_never_deleted():
+    """Triage and discard move an idea to `## ✅ Triaged` with where it went.
+
+    This was the one place the ledger deleted something, and with each idea
+    went every question about the funnel. Now the line is kept, newest first,
+    as `→ US-012 (date)` or `→ discarded (date): why`, and a file from before
+    the section existed gets it added exactly once.
+    """
+    with Ledger() as led:
+        def text():
+            return (led.root / "demo-app" / "Ideas.md").read_text(encoding="utf-8")
+
+        already = led.repo().triaged_ideas()
+        equal([t["outcome"] for t in already], ["promoted", "discarded"],
+              "the fixture ships both outcomes")
+        equal(already[0]["became"], "US-006", "a promoted idea names what it became")
+        equal(already[1]["note"], "not before the design system lands",
+              "and a discarded one keeps the reason")
+        equal(already[0]["triaged"], "2026-02-22", "with the day it left the inbox")
+
+        inbox = len(led.repo().ideas())
+        idea = led.repo().ideas()[1]
+        led.run("triage_idea_to_epic", title="Digest emails", goal="g", idea_line=idea["line"])
+        retired = led.repo().triaged_ideas()
+        equal(len(retired), len(already) + 1, "the idea moved rather than vanished")
+        equal(retired[0]["text"], idea["text"], "newest first, text as captured")
+        equal(retired[0]["date"], idea["date"], "with its capture date")
+        check(retired[0]["became"].startswith("EPIC-"), "naming the epic it became")
+        equal(len(led.repo().ideas()), inbox - 1, "and it left the inbox")
+
+        idea = led.repo().ideas()[0]
+        led.run("triage_idea_to_story", epic_id="EPIC-001", title="From an idea",
+                idea_line=idea["line"])
+        promoted = led.repo().triaged_ideas()[0]
+        equal(promoted["outcome"], "promoted", "triage to a story retires the idea too")
+        check(promoted["became"].startswith("US-"),
+              f"naming the story it became: {promoted['became']!r}")
+        # one more to discard, since the inbox is now empty
+        led.run("add_idea", text="something to throw away")
+        idea = led.repo().ideas()[0]
+        led.run("discard_idea", idea_line=idea["line"], reason="duplicate of EPIC-002")
+        gone = led.repo().triaged_ideas()[0]
+        equal((gone["outcome"], gone["note"]), ("discarded", "duplicate of EPIC-002"),
+              "a discard keeps why")
+        equal(text().count("## ✅ Triaged"), 1, "there is still exactly one section")
+
+        # A ledger written before the section existed.
+        (led.root / "demo-app" / "Ideas.md").write_text(
+            "# Ideas\n\n## \U0001f4a1 Inbox\n\n- 2026-01-01 — first\n- 2026-01-02 — second\n",
+            encoding="utf-8")
+        led.run("discard_idea", idea_line=led.repo().ideas()[0]["line"])
+        led.run("discard_idea", idea_line=led.repo().ideas()[0]["line"])
+        equal(text().count("## ✅ Triaged"), 1, "the section is added once, not per idea")
+        equal(len(led.repo().triaged_ideas()), 2, "and both ideas are in it")
+        equal(len(led.repo().ideas()), 0, "with the inbox empty")
+        check(text().endswith("\n") and not text().endswith("\n\n\n"),
+              "and the file ends cleanly")
+
+
 def test_every_action_declares_who_runs_it():
     """Each action is either role-restricted or explicitly open — never neither.
 
@@ -1494,6 +1633,17 @@ def test_templates_agree_with_the_model():
     defs = (references / "Definitions.template.md").read_text(encoding="utf-8")
     check("Me:" in defs, "the Definitions template keeps the shared fallback")
     check("Me.local.md" in defs, "and points at the per-clone file instead")
+    check("methodology:" in defs, "and declares the project's methodology")
+    for way in ("scrum", "kanban"):
+        check(way in defs, f"naming {way} as a value")
+
+    # Ideas.md ships the Triaged section, with its examples commented out so a
+    # new ledger does not start with two ideas that were never captured.
+    ideas = (references / "Ideas.template.md").read_text(encoding="utf-8")
+    check("## ✅ Triaged" in ideas, "the Ideas template ships the Triaged section")
+    check("clears the line" not in ideas, "and no longer says the line is cleared")
+    equal(parse.parse_triaged_ideas(mdutil.split_lines(ideas)), [],
+          "its example rows are comments, so they parse as nothing")
 
 
 def main() -> int:

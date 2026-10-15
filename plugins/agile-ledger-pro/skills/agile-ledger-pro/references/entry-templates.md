@@ -164,10 +164,23 @@ another password.
 
 **Dependencies:** [US-009](User-Stories.md#us-009)
 
+**Ready:** 2026-06-02
+
+**Started:** 2026-06-10
+
 **Delivered:** 2026-06-18 · sprint 2026-S12 · _(PR #142 · a1b2c3d)_ · released in v2.1
 
 **Notes:** —
 ```
+
+> **The flow dates.** `Ready:` is written by `/detail-us` (Draft → Ready), `Started:` by `/start-us`
+> the first time a story enters In Progress, `Delivered:` by `/done-us`. They sit in that order, just
+> above Delivered, and each is written only when it happens — an entry from before they existed
+> stays exactly as it is. Ready → Delivered is **lead time**; Started → Delivered is **cycle time**.
+> Bugs carry the same idea as `Triaged:` (`/triage-bug`), `Started:` (`/start-bug`) and `Fixed:`.
+> Epics carry `**Created:**` (written by `/triage`, after `Area`). On the board, an item pulled in
+> after planning ends `· pulled 2026-06-20`, and a 🚧 Blocked line ends `· since 2026-06-20` — that
+> date never moves when the reason is edited, because blocked time is counted from the first flag.
 
 ### paused / discarded
 

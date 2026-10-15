@@ -7,6 +7,7 @@
 ## Config
 
 ```
+methodology: scrum
 language: English
 git_execution: off
 estimation: fibonacci
