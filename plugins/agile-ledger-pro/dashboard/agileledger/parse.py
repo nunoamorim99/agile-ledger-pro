@@ -721,6 +721,9 @@ def parse_history(lines: list[str]) -> dict:
             "velocity": velocity,
             "delivered": [i.upper() for i in re.findall(
                 r"\b((?:US|BUG)-\d+)\b", grab("Delivered"), re.IGNORECASE)],
+            "pulled": [i.upper() for i in re.findall(
+                r"\b((?:US|BUG)-\d+)\b", grab("Pulled in") or "", re.IGNORECASE)],
+            "pulled_points": (re.search(r"\((\d+)\s*pts?\)", grab("Pulled in") or "") or [None, "0"])[1],
             "carried": [i.upper() for i in re.findall(
                 r"\b((?:US|BUG)-\d+)\b", grab("Carried over"), re.IGNORECASE)],
             "retro": _retro_notes(body),

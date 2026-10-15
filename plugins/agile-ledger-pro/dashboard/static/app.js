@@ -210,6 +210,7 @@ async function act(action, params, successTitle) {
       warnings);
     render();
     refreshWorkspaceQuietly();
+    state.insights = null;                 // derived from the files; recompute next visit
     return result;
   } catch (error) {
     toast('err', 'Could not do that', error.message);
@@ -1433,6 +1434,8 @@ const LEDGER_DESTINATIONS = [
   { route: 'health',   label: 'Health',   view: 'health',
     icon: 'M8 13.5S2.5 10.2 2.5 6.4A2.9 2.9 0 0 1 8 5a2.9 2.9 0 0 1 5.5 1.4c0 3.8-5.5 7.1-5.5 7.1Z',
     warn: true, count: () => healthCount() },
+  { route: 'insights', label: 'Insights', view: 'insights',
+    icon: 'M2.5 12.5h11M4 10V7M7 10V4.5M10 10V6M13 10V3' },
   { route: 'files',    label: 'Files',    view: 'files',
     icon: 'M4 2.5h5l3 3v8h-8ZM9 2.5v3h3' },
   { route: 'commands', label: 'Commands', view: 'commands',
@@ -3398,6 +3401,220 @@ function copyReleaseNotes() {
       `${repo.releases.versions.length} version(s) as Markdown`),
     () => toast('warn', 'Could not reach the clipboard', 'Copy them from Files instead.'));
 }
+
+/* ================================================================= Insights
+ * The numbers a Product Manager steers by, computed by insights.py from the
+ * ledger as it is and fetched fresh on every visit — derived, never stored.
+ *
+ * Every chart here is one series in one hue, with the status palette reserved
+ * for state. Nothing is dual-axis. A figure the ledger cannot support yet is
+ * shown as the reason it cannot, not as a zero that looks like a measurement.
+ */
+
+async function loadInsights() {
+  state.insights = await api(`/api/repo/${encodeURIComponent(state.slug)}/insights`);
+  state.insightsSlug = state.slug;
+  render();
+}
+
+/** A small single-series bar chart: categories along the bottom, one hue. */
+function barChart(rows, opts) {
+  const { valueKey, labelKey, title, ariaUnit, secondKey } = opts;
+  if (!rows.length) return el('p', { class: 'empty', text: opts.empty || 'Nothing to chart yet.' });
+  const W = 560, H = 180, padL = 30, padR = 12, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(...rows.map((r) => Math.max(num(r[valueKey]), secondKey ? num(r[secondKey]) : 0)), 1);
+  const ceiling = Math.max(4, Math.ceil(max / 4) * 4);
+  const band = plotW / rows.length;
+  const barW = Math.min(22, Math.max(6, band - 10));
+  const y = (v) => padT + plotH - (v / ceiling) * plotH;
+  const x = (i) => padL + band * i + band / 2;
+  const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'vel ins-chart', role: 'img' });
+  const caption = svg('title', {});
+  caption.textContent = `${title}: ${rows.map((r) => `${r[labelKey]} ${r[valueKey]}`).join('; ')}`;
+  chart.append(caption);
+  for (let i = 0; i <= 4; i++) {
+    const v = (ceiling / 4) * i, yy = y(v);
+    chart.append(svg('line', { x1: padL, x2: W - padR, y1: yy, y2: yy, class: i === 0 ? 'axis' : 'gridline' }));
+    const tick = svg('text', { x: padL - 6, y: yy + 3.5, 'text-anchor': 'end', class: 'tick' });
+    tick.textContent = String(v);
+    chart.append(tick);
+  }
+  const every = Math.max(1, Math.ceil(44 / band));
+  rows.forEach((r, i) => {
+    const v = num(r[valueKey]);
+    const hit = svg('rect', { x: padL + band * i, y: padT, width: band, height: plotH, class: 'bar-hit', tabindex: '0' });
+    const tip = svg('title', {});
+    tip.textContent = `${r[labelKey]} · ${v}${ariaUnit ? ' ' + ariaUnit : ''}`
+      + (secondKey ? ` · ${num(r[secondKey])} ${secondKey}` : '');
+    hit.append(tip);
+    chart.append(hit);
+    if (secondKey) {
+      // The second measure as an outline behind the bar: same axis, same unit.
+      const v2 = num(r[secondKey]);
+      chart.append(svg('rect', { x: x(i) - barW / 2, y: y(v2), width: barW,
+        height: Math.max(0, padT + plotH - y(v2)), rx: Math.min(4, barW / 2), class: 'bar-ghost' }));
+    }
+    chart.append(svg('rect', { x: x(i) - barW / 2, y: y(v), width: barW,
+      height: Math.max(0, padT + plotH - y(v)), rx: Math.min(4, barW / 2), class: 'bar' }));
+    if ((rows.length - 1 - i) % every === 0) {
+      const label = svg('text', { x: x(i), y: padT + plotH + 15, 'text-anchor': 'middle', class: 'cat' });
+      label.textContent = String(r[labelKey]).replace(/^\d{4}-/, '');
+      chart.append(label);
+    }
+  });
+  return chart;
+}
+
+/** A figure with its unit, or the reason there is none. */
+function figure(label, value, unit, reason) {
+  const has = value !== null && value !== undefined && value !== '';
+  return el('div', { class: `ins-fig${has ? '' : ' none'}` },
+    el('div', { class: 'ins-fig-v', text: has ? `${value}${unit || ''}` : '—' }),
+    el('div', { class: 'ins-fig-l', text: label }),
+    !has && reason ? el('div', { class: 'ins-fig-r hint', text: reason }) : null);
+}
+
+const days = (stat, what) => (stat ? `${stat.median}d median · ${stat.p85}d p85 · n=${stat.n}` : `no ${what} yet`);
+
+function insightsSection(title, sub, ...kids) {
+  return el('section', { class: 'section ins-sec' }, sectionHead(title, sub), ...kids);
+}
+
+VIEWS.insights = () => {
+  const wrap = el('div', {});
+  wrap.append(el('div', { class: 'page-head' },
+    el('div', { class: 'grow' },
+      el('h1', { class: 'page-title', text: 'Insights' }),
+      el('p', { class: 'page-sub',
+        text: 'what the backlog says about how this project is going — derived from the files, never typed in' }))));
+  const r = state.insights;
+  if (!r || state.insightsSlug !== state.slug) {
+    wrap.append(el('p', { class: 'empty', text: 'Computing…' }));
+    loadInsights();
+    return wrap;
+  }
+  const kanban = r.methodology === 'kanban';
+  const s = r.sprints, f = r.forecast, b = r.bugs, p = r.portfolio, w = r.workload, bl = r.backlog, fl = r.flow;
+
+  // ---- Delivery: the headline differs by methodology, the rest does not.
+  const headline = kanban
+    ? el('div', { class: 'ins-figs' },
+        figure('items / week', fl.throughput_weekly.items, '', null),
+        figure('points / week', fl.throughput_weekly.points, '', null),
+        figure('cycle time', fl.cycle_time_days ? fl.cycle_time_days.median : null, 'd', fl.reason),
+        figure('lead time', fl.lead_time_days ? fl.lead_time_days.median : null, 'd', fl.reason))
+    : el('div', { class: 'ins-figs' },
+        figure('rolling velocity', s.rolling_velocity, ' pts', 'no closed sprint yet'),
+        figure('reliability', s.reliability_avg, '%', 'completed ÷ committed, once a sprint has closed'),
+        figure('carry-over', s.carry_over_rate, '%', 'of promised items rolled over'),
+        figure('cycle time', fl.cycle_time_days ? fl.cycle_time_days.median : null, 'd', fl.reason));
+  wrap.append(insightsSection(kanban ? 'Flow' : 'Delivery',
+    kanban ? 'throughput and cycle time are what a Kanban team runs on' : 'velocity, and whether planning is honest',
+    headline,
+    kanban
+      ? barChart(fl.throughput, { valueKey: 'items', labelKey: 'week', title: 'Items delivered per week',
+          ariaUnit: 'items', empty: 'Nothing delivered in the last twelve weeks.' })
+      : barChart(s.sprints, { valueKey: 'completed', labelKey: 'name', secondKey: 'committed',
+          title: 'Completed against committed, per sprint', ariaUnit: 'pts', empty: 'No closed sprints yet.' }),
+    s.sprints.length ? el('table', { class: 'grid ins-table' },
+      el('thead', {}, el('tr', {}, ['Sprint', 'Committed', 'Completed', 'Reliability', 'Carried', 'Pulled in'].map((h) => el('th', { text: h })))),
+      el('tbody', {}, s.sprints.slice().reverse().map((x) => el('tr', {},
+        el('td', { text: x.name }), el('td', { class: 'num', text: x.committed }), el('td', { class: 'num', text: x.completed }),
+        el('td', { class: 'num', text: x.reliability === null ? '—' : `${x.reliability}%` }),
+        el('td', { class: 'num', text: x.carried }), el('td', { class: 'num', text: x.pulled ? `${x.pulled} (${x.pulled_points} pts)` : '—' }))))) : null));
+
+  // ---- Forecast
+  wrap.append(insightsSection('Forecast', 'at today’s pace — a projection, not a promise',
+    el('div', { class: 'ins-figs' },
+      figure('Ready backlog', f.ready_points, ' pts', null),
+      figure('runway', f.runway_sprints, ' sprints', f.reason),
+      figure('backlog lasts until', f.runway_until, '', f.reason || 'needs a sprint length from the history'),
+      figure('unestimated', f.unestimated, '', null)),
+    f.epics.length ? el('table', { class: 'grid ins-table' },
+      el('thead', {}, el('tr', {}, ['Epic', 'Remaining', 'Sprints', 'ETA', 'Target'].map((h) => el('th', { text: h })))),
+      el('tbody', {}, f.epics.map((e) => el('tr', {},
+        el('td', {}, el('button', { class: 'idlink', type: 'button', onclick: () => openItemPage(e.id) }, e.id), ' ', el('span', { text: e.title })),
+        el('td', { class: 'num', text: `${e.remaining_points} pts` }),
+        el('td', { class: 'num', text: e.sprints === null ? '—' : e.sprints }),
+        el('td', { text: e.eta || '—' }), el('td', { text: e.target })))))
+      : el('p', { class: 'hint', text: 'No epic has remaining points.' })));
+
+  // ---- Quality
+  wrap.append(insightsSection('Quality', 'bugs reported against bugs fixed, and what is still open',
+    el('div', { class: 'ins-figs' },
+      figure('open bugs', b.open, '', null),
+      figure('time to fix', b.time_to_fix_days ? b.time_to_fix_days.median : null, 'd', 'no fixed bug with a reported date'),
+      figure('open bug age', b.open_age_days ? b.open_age_days.median : null, 'd', 'no open bugs'),
+      figure('escape rate', b.escape_rate, '%', 'bugs linked to delivered stories, over delivered stories')),
+    barChart(b.by_month, { valueKey: 'reported', labelKey: 'month', secondKey: 'fixed',
+      title: 'Bugs reported per month, fixed behind', ariaUnit: 'reported', empty: 'No dated bugs yet.' }),
+    el('p', { class: 'hint', text: `Open by severity: ${Object.entries(b.open_by_severity).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}`
+      + ` · by priority: ${Object.entries(b.open_by_priority).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}`
+      + (b.inbox ? ` · ${b.inbox} untriaged in the inbox` : '') })));
+
+  // ---- Portfolio
+  wrap.append(insightsSection('Portfolio', `${p.count} epics · ${p.releases.length} releases`,
+    el('div', { class: 'ins-figs' },
+      ...Object.entries(p.by_state).map(([k, v]) => figure(k, v, '', null)),
+      figure('days since release', p.days_since_release, 'd', 'no dated release'),
+      figure('release gap', p.release_gap_days ? p.release_gap_days.median : null, 'd', 'needs two dated releases'),
+      figure('unreleased', p.unreleased, '', null)),
+    el('div', { class: 'ins-epics' }, p.epics.map((e) => el('div', { class: 'ins-epic' },
+      el('div', { class: 'ins-epic-h' },
+        el('button', { class: 'idlink', type: 'button', onclick: () => openItemPage(e.id) }, e.id),
+        el('span', { class: 'grow', text: e.title }), stateChip('epic', e.state), el('span', { class: 'hint', text: e.target })),
+      meter(e.points_done, e.points_total))))));
+
+  // ---- Team — distribution, never a ranking
+  wrap.append(insightsSection('Team', 'how the work is spread — a distribution, not a ranking',
+    w.concentrated_on.length ? el('p', { class: 'ins-warn',
+      text: `${w.concentrated_on.join(', ')} ${w.concentrated_on.length > 1 ? 'are' : 'is'} carrying half or more of everything delivered. That is a bus-factor and a burnout signal, not an achievement.` }) : null,
+    w.people.length ? el('table', { class: 'grid ins-table' },
+      el('thead', {}, el('tr', {}, ['Person', 'In progress', 'In review', 'In PR', 'WIP pts', 'Share of delivered'].map((h) => el('th', { text: h })))),
+      el('tbody', {}, w.people.map((x) => el('tr', {},
+        el('td', { text: x.person === '—' ? 'unassigned' : displayName(x.person) }),
+        el('td', { class: 'num', text: x.in_progress }), el('td', { class: 'num', text: x.in_review }), el('td', { class: 'num', text: x.in_pr }),
+        el('td', { class: 'num', text: x.points }), el('td', { class: 'num', text: x.share === null ? '—' : `${x.share}%` })))))
+      : el('p', { class: 'hint', text: 'Nobody has work assigned.' }),
+    el('p', { class: 'hint', text: 'Listed alphabetically on purpose. The ledger never ranks people by output; what it asks is whether the load is survivable.' })));
+
+  // ---- Backlog health
+  wrap.append(insightsSection('Backlog health', 'what will hurt the next planning',
+    el('div', { class: 'ins-figs' },
+      figure('stories ≥ 8 pts', bl.oversized.length, '', null),
+      figure('failing DoR', bl.failing_dor.length, '', null),
+      figure('drafts', bl.drafts, '', null),
+      figure('ideas waiting', bl.ideas_in_inbox, '', null),
+      figure('idea age', bl.idea_age_days ? bl.idea_age_days.median : null, 'd', 'inbox is empty'),
+      figure('unplanned share', bl.unplanned_share, '%', 'bug points on the board, over all points'),
+      figure('blocked', bl.blocked, '', null)),
+    bl.oversized.length ? el('p', { class: 'hint', text: 'Too big to finish in a sprint: ' + bl.oversized.map((x) => `${x.id} (${x.points})`).join(', ') + ' — slice vertically.' }) : null,
+    bl.failing_dor.length ? el('p', { class: 'hint', text: 'Ready but not ready: ' + bl.failing_dor.map((x) => `${x.id} — ${x.why[0]}`).join('; ') }) : null));
+
+  // ---- Flow (Scrum shows it second; Kanban already led with it)
+  if (!kanban) {
+    wrap.append(insightsSection('Flow', fl.reason ? `${fl.measurable} of ${fl.of} stories carry flow dates` : 'how long things take, from Ready to Started to Delivered',
+      el('div', { class: 'ins-figs' },
+        figure('lead time', fl.lead_time_days ? fl.lead_time_days.median : null, 'd', fl.reason),
+        figure('cycle time', fl.cycle_time_days ? fl.cycle_time_days.median : null, 'd', fl.reason),
+        figure('items / week', fl.throughput_weekly.items, '', null),
+        figure('pulled in mid-sprint', fl.scope_change.share, '%', 'of board points')),
+      fl.blocked.length ? el('p', { class: 'hint', text: 'Blocked: ' + fl.blocked.map((x) => `${x.id}${x.days !== null ? ` ${x.days}d` : ''} — ${x.reason}`).join('; ') }) : null));
+  }
+
+  // ---- Ideas funnel
+  const id = fl.ideas;
+  wrap.append(insightsSection('Ideas', `${id.captured} captured · ${id.promoted} became work · ${id.discarded} discarded · ${id.waiting} waiting`,
+    el('div', { class: 'ins-figs' },
+      figure('promotion rate', id.promotion_rate, '%', 'nothing triaged yet'),
+      figure('days to triage', id.days_to_triage ? id.days_to_triage.median : null, 'd', 'nothing triaged yet')),
+    barChart(id.by_month, { valueKey: 'captured', labelKey: 'month', secondKey: 'promoted',
+      title: 'Ideas captured per month, promoted behind', ariaUnit: 'captured', empty: 'No dated ideas yet.' })));
+
+  wrap.append(el('p', { class: 'hint', style: 'margin-top:18px', text: `Computed ${r.generated} from the files as they are. /insights prints the same numbers in the session.` }));
+  return wrap;
+};
 
 /* ================================================================= Settings
  * Everything the skill lets you configure, in the two files that hold it: this

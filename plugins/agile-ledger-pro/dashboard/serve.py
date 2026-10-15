@@ -27,7 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from agileledger import actions, commands, resolve  # noqa: E402
+from agileledger import actions, commands, insights, resolve  # noqa: E402
 from agileledger.actions import ActionError  # noqa: E402
 from agileledger.model import (ACTION_ROLES, BOARD_COLUMNS, BUG_STATE_LABEL,  # noqa: E402
                                BUG_STATES,
@@ -168,6 +168,14 @@ class Handler(BaseHTTPRequestHandler):
                     data = self.workspace.repo(m.group(1)).snapshot()
                 data["revision"] = self.workspace.revision(m.group(1))
                 return self._json(data)
+
+            m = re.fullmatch(r"/api/repo/([^/]+)/insights", path)
+            if m:
+                # Derived, never stored: computed from the snapshot on each
+                # request so it can never disagree with the files.
+                with self.workspace.lock:
+                    snapshot = self.workspace.repo(m.group(1)).snapshot()
+                return self._json(insights.report(snapshot))
 
             m = re.fullmatch(r"/api/repo/([^/]+)/revision", path)
             if m:

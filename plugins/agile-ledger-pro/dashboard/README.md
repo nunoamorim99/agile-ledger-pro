@@ -64,6 +64,19 @@ generated from the installed `commands/*.md` frontmatter, so the sheet always ma
 rather than a copy that goes stale. Each row copies its command on click; the ones the page can do
 carry a button that opens the right form.
 
+**Insights** is the report a Product Manager steers by, computed from the files on every visit and
+never stored: per-sprint velocity with **reliability** (completed ÷ committed) and carry-over; a
+**forecast** — Ready points over velocity gives sprints of runway, and each epic an ETA; bugs
+reported against fixed per month, open age, time to fix and the escape rate; the epic portfolio and
+release cadence; **workload distribution**; backlog smells; **flow** — lead and cycle time from the
+`Ready:`/`Started:`/`Delivered:` dates, blocked days, scope pulled in mid-sprint — and the ideas
+funnel. A Kanban project leads with throughput and cycle time instead of velocity. Two rules hold
+throughout: a number the ledger cannot support yet is shown as the reason it cannot, never as a zero
+that looks like a measurement; and the Team section lists people alphabetically and says when one
+person is carrying half of everything — it is a distribution, never a ranking, because the skill
+promises the ledger is not a productivity leaderboard. `/insights` prints the same report in the
+session, to the digit.
+
 **Settings** is a screen of its own: everything the skill reads before it acts — this project's
 `Definitions.md` (language, estimation scale, whether git may run in the code repo) and the ledger's
 `Config.md` (placement, default project, org, commit and push policy, branches) — plus the team

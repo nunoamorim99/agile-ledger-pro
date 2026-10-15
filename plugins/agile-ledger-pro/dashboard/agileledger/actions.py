@@ -827,6 +827,7 @@ def close_sprint(repo: Repo, retro_kept: str = "", retro_try: str = "", **_) -> 
 
     velocity = pts(done)
     committed = velocity + pts(unfinished)
+    pulled = [i for col in BOARD_COLUMNS for i in board.get(col, []) if i.get("pulled")]
 
     entry = [
         f'## {name} {mdutil.DASH} "{sprint.get("goal", "") or ""}" '
@@ -835,6 +836,10 @@ def close_sprint(repo: Repo, retro_kept: str = "", retro_try: str = "", **_) -> 
         f"Committed: {committed} pts · Completed: {velocity} pts → **velocity {velocity}**",
         f"Delivered: {', '.join(i['id'] for i in done) if done else EMPTY}",
         f"Carried over: {', '.join(i['id'] for i in unfinished) if unfinished else EMPTY}",
+        # Scope change is only knowable later if it is written down now: the
+        # board is rebuilt next sprint and the `pulled` stamps go with it.
+        f"Pulled in: {', '.join(i['id'] for i in pulled) if pulled else EMPTY}"
+        + (f" ({pts(pulled)} pts)" if pulled else ""),
         "Retro notes:",
         f"- Kept: {retro_kept}",
         f"- Try: {retro_try}",

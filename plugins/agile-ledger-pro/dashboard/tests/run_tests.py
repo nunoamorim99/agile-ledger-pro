@@ -887,6 +887,205 @@ def test_team_section_is_created_when_a_ledger_predates_it():
         check(not tail.endswith("\n\n"), "without leaving a blank line at the end")
 
 
+def test_insights_outcomes_from_the_fixture():
+    """The numbers a PM steers by, computed from the ledger as it is.
+
+    Every figure here is derived from the fixture's files, so each expected
+    value can be checked by hand against them: two closed sprints (8 of 8,
+    then 11 of 13), one release, three bugs, two epics.
+    """
+    from agileledger import insights
+
+    with Ledger() as led:
+        snap = led.repo().snapshot()
+        r = insights.report(snap)
+
+        s = r["sprints"]
+        equal(s["count"], 2, "two closed sprints in the history")
+        equal([x["velocity"] for x in s["sprints"]], [8, 11], "oldest first, velocity per sprint")
+        equal([x["reliability"] for x in s["sprints"]], [100, 85],
+              "reliability is completed over committed: 8/8, then 11/13")
+        equal(s["reliability_avg"], 92, "averaged")
+        equal(s["rolling_velocity"], 10, "rolling velocity over the last three (here two)")
+        equal(s["velocity_trend"], 3, "and the trend across them")
+        equal(s["carry_over_rate"], 33, "one carried of three promised items: a third")
+        equal(s["typical_length_days"], 12, "a sprint is twelve days here")
+
+        f = r["forecast"]
+        equal(f["ready_points"], 11, "eleven Ready points")
+        equal(f["runway_sprints"], 1.1, "which is 1.1 sprints at velocity 10")
+        check(f["runway_until"] is not None, "with a date, since the sprint length is known")
+        check(f["epics"] and f["epics"][0]["id"] == "EPIC-001",
+              "the epic nearest to landing is listed first")
+        equal(f["epics"][0]["remaining_points"], 8, "with the points it still needs")
+
+        b = r["bugs"]
+        equal((b["total"], b["open"]), (3, 2), "three bugs, two open")
+        equal(b["open_by_severity"], {"major": 1, "minor": 1}, "open by severity")
+        equal([(m["month"], m["reported"], m["fixed"]) for m in b["by_month"]],
+              [("2026-01", 1, 0), ("2026-02", 1, 1), ("2026-03", 1, 0)],
+              "reported and fixed per month, from the dates on each bug")
+        equal(b["time_to_fix_days"]["median"], 5, "BUG-003 took five days")
+        equal(len(b["escapes"]), 1, "one bug relates to a delivered story")
+        check(b["open_age_days"]["n"] == 2, "and both open bugs have an age")
+
+        p = r["portfolio"]
+        equal(p["count"], 2, "two epics")
+        equal(p["by_state"], {"In Progress": 1, "Proposed": 1}, "by derived state")
+        equal(len(p["releases"]), 1, "one release")
+        equal(p["release_gap_days"], None, "no gap to measure with one release")
+        check(p["days_since_release"] > 100, "and it was a while ago")
+
+        bl = r["backlog"]
+        equal([x["id"] for x in bl["oversized"]], ["US-005"], "one story at 8+ points")
+        equal(bl["drafts"], 1, "one Draft under an epic")
+        equal(bl["ideas_in_inbox"], 2, "two ideas waiting")
+        equal(bl["failing_dor"], [], "every Ready story passes the Definition of Ready")
+
+
+def test_insights_never_rank_people():
+    """Workload is a distribution, not a leaderboard — the skill's promise.
+
+    The rows are alphabetical, never ordered by output, and the only
+    judgement is whether delivery is concentrated on one person.
+    """
+    from agileledger import insights
+
+    with Ledger() as led:
+        snap = led.repo().snapshot()
+        w = insights.workload(snap)
+        equal([x["person"] for x in w["people"]], sorted(x["person"] for x in w["people"]),
+              "people are listed alphabetically")
+        rita = next(x for x in w["people"] if x["person"] == "rita")
+        equal(rita["in_progress"], 1, "with their WIP now")
+        equal(rita["share"], 100, "and their share of delivered points")
+        equal(w["concentrated_on"], ["rita"], "which, at 100%, is a concentration warning")
+
+        # Give somebody else the delivered story and the warning must clear.
+        snap["stories"] = [dict(s, assignee="@leo" if s["id"] == "US-001" else s.get("assignee"))
+                           for s in snap["stories"]]
+        w = insights.workload(snap)
+        shares = {x["person"]: x["share"] for x in w["people"]}
+        check(shares.get("leo", 0) < 100 and shares.get("rita", 0) < 100,
+              "spread across two people, nobody carries all of it")
+        equal([x["person"] for x in w["people"]], ["leo", "rita"],
+              "still alphabetical, whoever delivered more")
+
+
+def test_insights_say_what_they_cannot_measure():
+    """Flow metrics need the Phase 0 dates; without them the report says so."""
+    from agileledger import insights
+
+    with Ledger() as led:
+        snap = led.repo().snapshot()
+        fl = insights.flow(snap)
+        equal((fl["measurable"], fl["of"]), (0, 4), "no story carries a flow date yet")
+        equal(fl["cycle_time_days"], None, "so there is no cycle time")
+        check("written from now on" in fl["reason"], "and the reason says they are written from now on")
+        equal(fl["ideas"]["captured"], 4, "while the ideas funnel already works: four captured")
+        equal((fl["ideas"]["promoted"], fl["ideas"]["discarded"]), (1, 1), "one promoted, one discarded")
+        equal(fl["ideas"]["days_to_triage"]["median"], 3, "triaged in three days, median")
+
+        # Once a story carries the dates, the numbers appear — and only from
+        # the stories that have them.
+        for s in snap["stories"]:
+            if s["id"] == "US-001":
+                s["ready"], s["started"] = "2026-01-05", "2026-01-12"
+        fl = insights.flow(snap)
+        equal(fl["measurable"], 1, "one story is measurable now")
+        equal(fl["lead_time_days"]["median"], 15, "Ready 05 Jan to Delivered 20 Jan: fifteen days")
+        equal(fl["cycle_time_days"]["median"], 8, "Started 12 Jan to Delivered 20 Jan: eight")
+        equal(fl["reason"], None, "and the report no longer apologises")
+
+        f = insights.forecast({"stories": [], "epics": [], "history": {"sprints": []}})
+        equal(f["velocity"], None, "no history means no velocity")
+        check("no closed sprint" in f["reason"], "and a reason rather than a guess")
+
+
+def test_insights_derive_a_switch_instead_of_guessing():
+    """Switching methodology: every suggested number shows its arithmetic."""
+    from agileledger import insights
+
+    with Ledger() as led:
+        snap = led.repo().snapshot()
+        equal(insights.methodology(snap), "scrum", "the fixture runs Scrum")
+
+        t = insights.transition(snap, "kanban")
+        check(t["ok"], "Scrum to Kanban is a valid switch")
+        equal(t["suggests"]["wip_limits"]["In Progress"], 2,
+              "WIP limit from the people on the board, not pulled from the air")
+        check("person" in t["suggests"]["why"], "and it says where the number came from")
+        check(any("velocity stops" in g for g in t["gaps"]), "and what changes as the headline")
+        check(any("closed first" in n for n in t["needs"]), "the open sprint has to close first")
+        check(any("never deleted" in k for k in t["keeps"]), "while the history is kept")
+
+        equal(insights.transition(snap, "scrum")["ok"], False, "switching to what you run is refused")
+        equal(insights.transition(snap, "waterfall")["ok"], False, "and so is an unknown methodology")
+
+        snap["definitions"]["config"]["methodology"] = "kanban"
+        equal(insights.methodology(snap), "kanban", "the key is honoured")
+        t = insights.transition(snap, "scrum")
+        check(t["ok"], "Kanban to Scrum is a valid switch")
+        equal(t["suggests"]["sprint_length_days"], 12, "sprint length from the old history")
+        check(any("no velocity can be derived" in g for g in t["gaps"]),
+              "nothing delivered recently, so it refuses to invent a velocity")
+
+        # With recent deliveries the velocity is computed from throughput and
+        # the windows are shown, so the number can be argued with.
+        import datetime
+        recent = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
+        for s in snap["stories"]:
+            if s["id"] == "US-001":
+                s["delivered"] = f"{recent} · sprint x"
+        t = insights.transition(snap, "scrum")
+        equal(t["suggests"]["velocity"], 5, "five points delivered in the one window with work")
+        check(len(t["suggests"]["windows"]) == 6, "over six windows, all shown")
+        check("window" in t["suggests"]["why"], "with the derivation stated")
+
+        # WIP limits parse leniently and report over-limit columns.
+        snap["definitions"]["config"]["wip_limits"] = "In Progress 1 · In Review: 2"
+        equal(insights.wip_limits(snap), {"In Progress": 1, "In Review": 2}, "limits by column")
+        status = {w["column"]: w for w in insights.wip_status(snap)}
+        equal(status["In Progress"]["over"], False, "one in progress against a limit of one is not over")
+        snap["sprint"]["board"]["In Progress"].append({"id": "US-999", "title": "x", "points": "", "assignee": ""})
+        status = {w["column"]: w for w in insights.wip_status(snap)}
+        equal(status["In Progress"]["over"], True, "two is")
+
+
+def test_sprint_close_records_pulled_in_work():
+    """Scope change survives the sprint it happened in."""
+    from agileledger import insights
+
+    with Ledger() as led:
+        led.run("detail_story", story_id="US-004", story="As a user",
+                criteria=["Given x, when y, then z"], estimate="3")
+        led.run("pull_into_sprint", items=["US-004"])
+        led.run("close_sprint", retro_kept="a", retro_try="b")
+        latest = led.repo().history()["sprints"][0]
+        equal(latest["pulled"], ["US-004"], "the closed sprint names what was pulled in")
+        equal(latest["pulled_points"], "3", "and its points")
+        text = (led.root / "demo-app" / "Sprints-History.md").read_text(encoding="utf-8")
+        check("Pulled in: US-004 (3 pts)" in text, "written as its own line")
+        s = insights.sprints(led.repo().snapshot())["sprints"][-1]
+        equal((s["pulled"], s["pulled_points"]), (1, 3), "and the insights read it back")
+
+
+def test_the_insights_endpoint_serves_the_report():
+    import serve
+    from agileledger import insights
+
+    with Ledger() as led:
+        snap = serve.Workspace(led.root).repo("demo-app").snapshot()
+        r = insights.report(snap)
+        for family in ("sprints", "forecast", "bugs", "portfolio", "workload", "backlog", "flow"):
+            check(family in r, f"the report carries {family}")
+        equal(r["methodology"], "scrum", "and the methodology")
+        equal(r["wip"], [], "with no WIP status under Scrum")
+        import json
+        json.dumps(r)                       # must be serialisable as-is
+        check(True, "and the whole report serialises to JSON")
+
+
 def test_flow_dates_are_stamped_once_and_kept():
     """Phase 0 of the insights work: the ledger starts recording *when*.
 

@@ -409,6 +409,15 @@ listed here because they gate everything else.
 - **`/board`** *(alias `/standup`)* — Print the current sprint snapshot: the five columns with their
   items (stories **and** bugs — ID, title, assignee, points), plus 🚧 blocked items and their reasons.
   Read-only. This is the async-team daily view.
+- **`/insights`** — The report a PM steers by, read-only, from the eight files: per-sprint velocity,
+  **reliability** (completed ÷ committed) and carry-over; **forecast** (Ready points ÷ velocity = runway;
+  per-epic ETA); bugs reported vs fixed per month, open age, time to fix and the **escape rate**; the
+  epic portfolio and release cadence; **workload distribution** (alphabetical, never a ranking — flag
+  when one person carries half); backlog smells (8+ point stories, Ready stories failing DoR, draft
+  and idea age, unplanned share); **flow** (lead and cycle time from `Ready:`/`Started:`/`Delivered:`,
+  blocked days, scope pulled in mid-sprint) and the **ideas funnel** from `## ✅ Triaged`. A Kanban
+  project leads with throughput and cycle time instead of velocity. A number the ledger cannot
+  support is printed as its reason, never estimated. The dashboard's Insights tab is the same report.
 - **`/my-work <name>`** — One developer's slice of the current sprint: their stories, board column,
   acceptance criteria (from `User-Stories.md`), branch, and any blockers. Read-only. Framed as
   **workload + blockers**, never a ranking. If `<name>` is omitted, resolve who is asking —
