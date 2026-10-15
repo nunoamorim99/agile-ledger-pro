@@ -1325,6 +1325,15 @@ select { color-scheme: inherit; }
 .switchlist { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
 .switchlist.gaps li { color: var(--warn); }
 
+/* --------------------------------------------------------- release notes */
+
+.relnotes-head { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 6px; flex-wrap: wrap; }
+.relnotes-head h4 { margin: 0; font-size: 13px; font-weight: 650; }
+.relnotes-text { width: 100%; font-family: inherit; line-height: 1.5; resize: vertical; }
+.relnotes-count { display: block; margin-top: 4px; }
+.relnotes-count.over { color: var(--warn); }
+.relnotes-actions { display: flex; justify-content: flex-end; margin: 8px 0 14px; }
+
 /* --------------------------------------------------------- the toolbar */
 
 .toolbar {

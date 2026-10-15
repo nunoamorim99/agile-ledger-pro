@@ -64,6 +64,16 @@ generated from the installed `commands/*.md` frontmatter, so the sheet always ma
 rather than a copy that goes stale. Each row copies its command on click; the ones the page can do
 carry a button that opens the right form.
 
+**Release notes are ready the moment a release is cut.** Cutting a release opens its notes
+straight away, and every version on the Ship tab has a **Release notes** button. Two boxes: **for
+the stores**, plain text with `•` bullets under *New* / *Improved* / *Fixed* — the App Store and
+Google Play do not render Markdown — with a live character count against Google Play's 500 and the
+App Store's 4000; and **for the team**, Markdown with item IDs for a GitHub release or a changelog.
+Each story is worded from its own *I want … so that …* ("You can now sign in with your Google
+account, so you don't have to create another password"), each bug as *Fixed an issue where …*.
+The text is editable before copying and never written back: it is derived, so it can be
+regenerated any time, and `/release` prints the same notes in the session.
+
 **Insights** is the report a Product Manager steers by, computed from the files on every visit and
 never stored: per-sprint velocity with **reliability** (completed ÷ committed) and carry-over; a
 **forecast** — Ready points over velocity gives sprints of runway, and each epic an ETA; bugs

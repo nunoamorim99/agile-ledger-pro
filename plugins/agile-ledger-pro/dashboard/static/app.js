@@ -1378,7 +1378,12 @@ function cutReleaseForm() {
         'New capability ⇒ Major · increment ⇒ Minor'),
       field('Title', textInput('title', '', 'Frictionless sign-in'))),
     field('Theme', textArea('theme', '', 'One line for the release notes.', 2)),
-  ], (data) => act('cut_release', data), { submit: 'Cut release' });
+  ], async (data) => {
+    const result = await act('cut_release', data);
+    // The moment the version exists is the moment someone needs its notes,
+    // so they open straight away instead of waiting to be looked for.
+    if (result && result.version) setTimeout(() => releaseNotesModal(result.version), 60);
+  }, { submit: 'Cut release' });
 }
 
 async function runCheck() {
@@ -3401,7 +3406,7 @@ function releasesPanel() {
   section.append(sectionHead('Releases', 'newest first',
     versions.length
       ? el('button', { class: 'btn small', type: 'button', onclick: copyReleaseNotes },
-          'Copy as release notes')
+          'Copy history as Markdown')
       : null));
   if (!versions.length) {
     section.append(el('p', { class: 'empty', text: 'No releases cut yet.' }));
@@ -3412,7 +3417,10 @@ function releasesPanel() {
     stack.append(el('div', { class: 'card rel' },
       el('div', { class: 'rel-head' },
         el('span', { class: 'mono rel-v', text: v.version }),
-        isSet(v.date) ? el('span', { class: 'mono hint', text: v.date }) : null),
+        isSet(v.date) ? el('span', { class: 'mono hint', text: v.date }) : null,
+        el('span', { class: 'grow' }),
+        el('button', { class: 'btn small', type: 'button',
+          onclick: () => releaseNotesModal(v.version) }, 'Release notes')),
       el('h3', { class: 'rel-title', text: show(v.title) }),
       isSet(v.theme) ? prose(v.theme, 'p', { class: 'rel-theme' }) : null,
       el('div', { class: 'chips', style: 'margin-top:10px' },
@@ -3425,6 +3433,52 @@ function releasesPanel() {
   }
   section.append(stack);
   return section;
+}
+
+/* --------------------------------------------------------- release notes --
+ * Derived by releasenotes.py from the version entry and each item's own
+ * story sentence — never written to the ledger, so they can be regenerated
+ * at any time. The text is editable here because the generated wording is a
+ * starting point; what gets copied is what is in the box.
+ */
+async function releaseNotesModal(version) {
+  const r = await api(`/api/repo/${encodeURIComponent(state.slug)}/release-notes?version=${encodeURIComponent(version || '')}`);
+  if (!r.ok) { toast('warn', 'No release notes', r.reason); return; }
+
+  const counter = el('span', { class: 'hint relnotes-count' });
+  const store = el('textarea', { class: 'control relnotes-text', rows: 10, 'aria-label': 'Store notes' });
+  store.value = r.store;
+  const md = el('textarea', { class: 'control relnotes-text', rows: 10, 'aria-label': 'Markdown notes' });
+  md.value = r.markdown;
+  const recount = () => {
+    const n = String(store.value || '').length;
+    const over = Object.entries(r.limits).filter(([, x]) => n > x.limit)
+      .map(([k, x]) => `${k === 'google_play' ? 'Google Play' : 'App Store'} (${x.limit})`);
+    counter.textContent = `${n} characters` + (over.length ? ` — over the limit for ${over.join(' and ')}` : ' — fits Google Play and the App Store');
+    if (over.length) counter.classList.add('over'); else counter.classList.remove('over');
+  };
+  store.addEventListener('input', recount);
+  recount();
+  const copy = (box, what) => navigator.clipboard?.writeText(String(box.value || '')).then(
+    () => toast('ok', `${what} copied`, `${r.version} — paste it in`),
+    () => toast('warn', 'Could not reach the clipboard', 'Select the text and copy it by hand.'));
+
+  openModal(`Release notes — ${r.version}${isSet(r.title) ? ' · ' + r.title : ''}`, [
+    r.empty ? el('p', { class: 'hint', text: 'This release names no items, so there is nothing to describe.' }) : null,
+    el('div', { class: 'relnotes-head' },
+      el('h4', { text: 'For the stores' }),
+      el('span', { class: 'hint', text: 'plain text — the App Store and Google Play do not render Markdown' })),
+    store, counter,
+    el('div', { class: 'relnotes-actions' },
+      el('button', { class: 'btn primary small', type: 'button', onclick: () => copy(store, 'Store notes') }, 'Copy for the stores')),
+    el('div', { class: 'relnotes-head' },
+      el('h4', { text: 'For the team' }),
+      el('span', { class: 'hint', text: 'Markdown with item IDs — GitHub release, CHANGELOG, Slack' })),
+    md,
+    el('div', { class: 'relnotes-actions' },
+      el('button', { class: 'btn small', type: 'button', onclick: () => copy(md, 'Markdown notes') }, 'Copy Markdown')),
+    el('p', { class: 'hint', text: 'Written from each story’s “I want … so that …”. Edit before copying; nothing here changes the ledger, and it can be regenerated from the Releases panel any time.' }),
+  ].filter(Boolean), async () => { closeModal(); }, { submit: 'Done' });
 }
 
 /** The version history as Markdown, ready to paste into a changelog. */

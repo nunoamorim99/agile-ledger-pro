@@ -490,6 +490,16 @@ listed here because they gate everything else.
   → sweep everything currently in the Increment; `[version]` overrides the computed number. Move the
   released lines into a new dated version-history entry (newest at top); leave the Increment clean.
   Increment to existing functionality ⇒ **Minor**; brand-new capability/epic ⇒ **Major**.
+  **Then print the release notes, ready to paste** — the step the team needs the moment the version
+  goes to the stores. Two blocks, derived from the items the version names (never written to the
+  ledger): **for the stores**, plain text with `•` bullets under `New:` / `Improved:` / `Fixed:`
+  (stores do not render Markdown), with its character count against Google Play's 500 and the App
+  Store's 4000; and **for the team**, Markdown with item IDs. A story becomes *"You can now <I want…>,
+  so <so that…>"* with the pronouns turned to the reader; a bug becomes *"Fixed an issue where
+  <title>"*. A story is **New** when its epic shipped nothing in an earlier version, otherwise
+  **Improved**. A reconstructed story's `?? (confirm)` value is left out rather than printed.
+  `dashboard/agileledger/releasenotes.py` is the reference — the dashboard opens the same notes
+  right after **Cut release**, so both must produce the same text.
 - **`/changelog`** — Derive user-facing release notes / `CHANGELOG.md` from the version history, grouped
   into **Added / Changed** (from stories & epics) and **Fixed** (from bugs). Derived only — never edits
   the ledger.

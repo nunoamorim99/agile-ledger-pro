@@ -929,6 +929,58 @@ def test_the_transition_route_reads_its_query():
             equal(insights.transition(snap, to)["ok"], want_ok, f"?{raw} → ok is {want_ok}")
 
 
+def test_release_notes_are_written_for_people():
+    """Store-ready notes from the items a version names — derived, never stored."""
+    from agileledger import releasenotes
+
+    with Ledger() as led:
+        r = releasenotes.build(led.repo().snapshot())
+        equal(r["version"], "v1.0", "the newest version by default")
+        equal([i["id"] for i in r["groups"]["New"]], ["US-001"],
+              "a story whose epic shipped nothing earlier is New")
+        equal([i["id"] for i in r["groups"]["Fixed"]], ["BUG-003"], "a bug is Fixed")
+        check(r["groups"]["New"][0]["text"].startswith("You can now "),
+              "a story is worded from its I want, to the reader")
+        equal(r["groups"]["Fixed"][0]["text"], "Fixed an issue where avatar upload times out.",
+              "a bug names the fault it fixed, not the fault as if it were a feature")
+        check("•" in r["store"] and "**" not in r["store"] and "#" not in r["store"],
+              "the store text is plain, with bullets — stores do not render Markdown")
+        check("US-" not in r["store"], "and carries no internal IDs")
+        check("(US-001)" in r["markdown"] and "### New" in r["markdown"],
+              "while the team's Markdown keeps them, under headings")
+        equal(r["length"], len(r["store"]), "the length is the store text's")
+        equal(r["limits"]["google_play"], {"limit": 500, "fits": True}, "and is checked against Google Play")
+
+        equal(releasenotes.build(led.repo().snapshot(), "v9.9")["ok"], False, "an unknown version says so")
+        equal(releasenotes.build(led.repo().snapshot(), "1.0")["version"], "v1.0", "the v is optional")
+
+        # A second release on the same epic is Improved, not New.
+        led.run("detail_story", story_id="US-004", story="As a user, I want to reset my password, so that I am never locked out",
+                criteria=["Given x, when y, then z"], estimate="2")
+        led.run("pull_into_sprint", items=["US-004"])
+        led.run("complete_item", item_id="US-004")
+        cut = led.run("cut_release", title="Recovery", theme="getting back in")
+        r = releasenotes.build(led.repo().snapshot(), cut["version"])
+        equal([i["id"] for i in r["groups"]["Improved"]], ["US-004"],
+              "a story on an epic that shipped before is Improved")
+        equal(r["groups"]["Improved"][0]["text"],
+              "You can now reset your password, so you are never locked out.",
+              "with my → your and I am → you are")
+
+    # Wording edge cases, independent of any ledger.
+    equal(releasenotes.user_line({"story": "value: ?? (confirm at triage)"}, "Portal staff auth"),
+          "Portal staff auth.", "a reconstructed story falls back to its title")
+    equal(releasenotes.user_line({"story": "As an admin, I want to export logs, so that ?? (confirm)"}, "x"),
+          "You can now export logs.", "and an unconfirmed so-that is left out, not printed")
+    equal(releasenotes.user_line({"story": "As an auditor, I want the audit log as a CSV, so that I can hand it to compliance"}, "x"),
+          "You now get the audit log as a CSV, so you can hand it to compliance.",
+          "a want that is a thing, not an action, is not forced into 'can now'")
+    big = {"releases": {"versions": [{"version": "v2.0", "stories": [f"BUG-{n}" for n in range(40)]}]},
+           "bugs": [{"id": f"BUG-{n}", "title": "Something long enough to add up quickly"} for n in range(40)]}
+    r = releasenotes.build(big)
+    equal(r["limits"]["google_play"]["fits"], False, "a long release is flagged over Google Play's 500")
+
+
 def test_insights_outcomes_from_the_fixture():
     """The numbers a PM steers by, computed from the ledger as it is.
 

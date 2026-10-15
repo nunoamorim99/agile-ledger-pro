@@ -28,7 +28,7 @@ from urllib.parse import parse_qs
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from agileledger import actions, commands, insights, resolve  # noqa: E402
+from agileledger import actions, commands, insights, releasenotes, resolve  # noqa: E402
 from agileledger.actions import ActionError  # noqa: E402
 from agileledger.model import (ACTION_ROLES, BOARD_COLUMNS, BUG_STATE_LABEL,  # noqa: E402
                                BUG_STATES,
@@ -177,6 +177,15 @@ class Handler(BaseHTTPRequestHandler):
                 with self.workspace.lock:
                     snapshot = self.workspace.repo(m.group(1)).snapshot()
                 return self._json(insights.report(snapshot))
+
+            m = re.fullmatch(r"/api/repo/([^/]+)/release-notes", path)
+            if m:
+                # Derived from Releases.md and the items it names; never written.
+                query = self.path.split("?", 1)[1] if "?" in self.path else ""
+                version = (parse_qs(query).get("version") or [""])[0]
+                with self.workspace.lock:
+                    snapshot = self.workspace.repo(m.group(1)).snapshot()
+                return self._json(releasenotes.build(snapshot, version or None))
 
             m = re.fullmatch(r"/api/repo/([^/]+)/transition", path)
             if m:
