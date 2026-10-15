@@ -8,6 +8,7 @@
 
 ```
 methodology: scrum         # scrum | kanban — per project; the dashboard and the sprint commands adapt
+wip_limits:                # kanban only, e.g. `In Progress 3 · In Review 2` — the board shows count/limit per column
 language: English          # language the ledger is written in
 git_execution: off         # off = generate branch/commit/PR text only; on = allow gh/git on confirmation
 estimation: fibonacci      # story-point scale: 1, 2, 3, 5, 8, 13, 21

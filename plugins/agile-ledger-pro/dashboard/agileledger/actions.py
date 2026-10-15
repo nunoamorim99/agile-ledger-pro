@@ -975,6 +975,27 @@ def _set_fenced_keys(lines: list[str], updates: dict) -> bool:
             rebuilt = rebuilt + " " * pad + hash_ + comment
         lines[i] = rebuilt.rstrip() if not hash_ else rebuilt
         changed = True
+    # A key the block has never carried is appended inside the fence rather
+    # than dropped: a ledger written before a key existed would otherwise be
+    # unable to ever set it from here, and the drop was silent.
+    present = set()
+    in_fence = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            if in_fence:
+                break
+            in_fence = True
+            continue
+        if in_fence:
+            m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", line)
+            if m:
+                present.add(m.group(1))
+    missing = [k for k in updates if k not in present and str(updates[k]).strip()]
+    if missing:
+        close = next(i for i, l in enumerate(lines) if l.strip().startswith("```") and i > 0
+                     and any(x.strip().startswith("```") for x in lines[:i]))
+        lines[close:close] = [f"{k}: {str(updates[k]).strip()}" for k in missing]
+        changed = True
     return changed
 
 

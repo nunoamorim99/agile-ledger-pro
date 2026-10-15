@@ -150,6 +150,35 @@ in-folder links between the eight files are identical in both placements. Cross-
 
 ---
 
+## Methodology — Scrum or Kanban, per project
+
+Each project's `Definitions.md` carries `methodology: scrum | kanban` (default `scrum`). **It is per
+project, not per ledger**: an organisation's Portal can run Kanban while its App runs Scrum, and
+the dashboard shows both. The eight files are identical under both — what changes is which numbers
+lead and which ceremonies the commands run. Read the key before any sprint command.
+
+**Scrum** is what every command below describes. **Kanban** changes these, and only these:
+
+- **`/plan-sprint` and `/close-sprint` do not apply.** Say so in one line and offer what the team
+  actually wants: a **cadence review** (throughput and cycle time over the last weeks, from
+  `/insights`), or pulling work onto the board directly. Never plan a sprint for a Kanban project.
+- **The board is continuous** and runs under **WIP limits** from `wip_limits:` in `Definitions.md`
+  (`In Progress 3 · In Review 2`). `/board` shows each column as `count/limit` and names any column
+  over its limit; `/start-us` warns — does not refuse — when the move would exceed one. Work is
+  pulled onto the board with `/pull`-style additions, which stamp `· pulled <date>` as usual.
+- **Velocity is not the headline.** `/insights` and the dashboard lead with **throughput**
+  (items and points per week) and **cycle time** (`Started:` → `Delivered:`); velocity, where any
+  history exists, is a record. Both are methodology-neutral, which is what lets two projects on
+  different methodologies be compared in `/workspace-status`.
+- Everything else — capture, triage, detail, the states, bugs, releases, the roster — is unchanged.
+
+**Switching** is `/switch-methodology <scrum|kanban>` (workspace skill). It proposes before it
+writes, derives every suggested number from the ledger and shows the arithmetic, and loses nothing:
+history is never deleted, a Kanban velocity is computed from throughput over sprint-length windows
+rather than guessed, and missing estimates are named as a gap rather than invented.
+
+---
+
 ## Committing to the ledger repo
 
 The ledger repo is a git repo; keeping its history clean is part of the bookkeeping. `Config.md` sets

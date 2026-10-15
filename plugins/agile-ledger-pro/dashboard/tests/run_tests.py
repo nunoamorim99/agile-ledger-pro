@@ -887,6 +887,48 @@ def test_team_section_is_created_when_a_ledger_predates_it():
         check(not tail.endswith("\n\n"), "without leaving a blank line at the end")
 
 
+def test_config_keys_the_file_never_carried_can_still_be_set():
+    """A new key is appended inside the fence, once, instead of silently dropped.
+
+    Found while wiring Kanban: `wip_limits` on a ledger written before the key
+    existed could never be set from the dashboard — the write reported success
+    and changed nothing. Any key added after a ledger was created had the same
+    problem, methodology included.
+    """
+    with Ledger() as led:
+        led.run("update_project_config", values={"wip_limits": "In Progress 1 · In Review 2",
+                                                 "language": "Portuguese"})
+        config = led.repo().definitions()["config"]
+        equal(config.get("wip_limits"), "In Progress 1 · In Review 2", "the new key is readable")
+        equal(config.get("language"), "Portuguese", "and the existing one was updated in place")
+        text = (led.root / "demo-app" / "Definitions.md").read_text(encoding="utf-8")
+        fence = text.split("```")[1]
+        check("wip_limits:" in fence, "written inside the first fence, where the parser reads")
+        equal(fence.count("language:"), 1, "without duplicating the key it updated")
+        equal(text.count("```"), 2, "and without opening a second fence")
+
+        led.run("update_project_config", values={"wip_limits": "In Progress 3"})
+        text = (led.root / "demo-app" / "Definitions.md").read_text(encoding="utf-8")
+        equal(text.split("```")[1].count("wip_limits:"), 1, "a second write updates, it does not append again")
+        led.run("update_project_config", values={"never_set": ""})
+        check("never_set" not in (led.root / "demo-app" / "Definitions.md").read_text(encoding="utf-8"),
+              "while a blank value adds nothing")
+
+
+def test_the_transition_route_reads_its_query():
+    """`/api/repo/<slug>/transition?to=kanban` hands `to` to the derivation."""
+    import serve
+    from urllib.parse import parse_qs
+
+    from agileledger import insights
+
+    with Ledger() as led:
+        snap = serve.Workspace(led.root).repo("demo-app").snapshot()
+        for raw, want_ok in (("to=kanban", True), ("to=scrum", False), ("", False), ("to=waterfall", False)):
+            to = (parse_qs(raw).get("to") or [""])[0]
+            equal(insights.transition(snap, to)["ok"], want_ok, f"?{raw} → ok is {want_ok}")
+
+
 def test_insights_outcomes_from_the_fixture():
     """The numbers a PM steers by, computed from the ledger as it is.
 
@@ -961,15 +1003,20 @@ def test_insights_never_rank_people():
         equal(rita["share"], 100, "and their share of delivered points")
         equal(w["concentrated_on"], ["rita"], "which, at 100%, is a concentration warning")
 
-        # Give somebody else the delivered story and the warning must clear.
-        snap["stories"] = [dict(s, assignee="@leo" if s["id"] == "US-001" else s.get("assignee"))
-                           for s in snap["stories"]]
+        # Give the smaller item to somebody else: rita keeps US-001 (5 pts), leo
+        # gets BUG-003 (2 pts). Now the order by output would be rita, leo —
+        # and the order shown must still be leo, rita. The first version of
+        # this test handed leo the bigger item, so both orders agreed and a
+        # ranking would have passed it.
+        snap["bugs"] = [dict(b, assignee="@leo" if b["id"] == "BUG-003" else b.get("assignee"))
+                        for b in snap["bugs"]]
         w = insights.workload(snap)
         shares = {x["person"]: x["share"] for x in w["people"]}
         check(shares.get("leo", 0) < 100 and shares.get("rita", 0) < 100,
               "spread across two people, nobody carries all of it")
+        check(shares["rita"] > shares["leo"], f"rita delivered more: {shares}")
         equal([x["person"] for x in w["people"]], ["leo", "rita"],
-              "still alphabetical, whoever delivered more")
+              "and is still listed second: alphabetical, never by output")
 
 
 def test_insights_say_what_they_cannot_measure():

@@ -23,6 +23,7 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -176,6 +177,15 @@ class Handler(BaseHTTPRequestHandler):
                 with self.workspace.lock:
                     snapshot = self.workspace.repo(m.group(1)).snapshot()
                 return self._json(insights.report(snapshot))
+
+            m = re.fullmatch(r"/api/repo/([^/]+)/transition", path)
+            if m:
+                # What a switch of methodology would need, derived — not written.
+                query = self.path.split("?", 1)[1] if "?" in self.path else ""
+                to = (parse_qs(query).get("to") or [""])[0]
+                with self.workspace.lock:
+                    snapshot = self.workspace.repo(m.group(1)).snapshot()
+                return self._json(insights.transition(snapshot, to))
 
             m = re.fullmatch(r"/api/repo/([^/]+)/revision", path)
             if m:

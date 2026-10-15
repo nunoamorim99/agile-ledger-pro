@@ -46,6 +46,15 @@ Place it at `$ARGUMENTS` if given; otherwise `./agile-ledger` for **A** (inside 
 
 **For B (its own repo):** write only `Registry.md` + `Config.md`, ask for the GitHub org/owner and the clone target, and offer `git init` plus a first commit, telling the user to create the remote and push it themselves. Do **not** scan, clone, or register anything — that is `/discover-repos` and `/register-repo`.
 
+## 3b. Ask which methodology the project runs
+
+`scrum` or `kanban`, written as `methodology:` in the project's `Definitions.md` (for **A** that is the
+root `Definitions.md`; for **B** each project answers when it is registered). Default `scrum`. One line
+each: Scrum plans in sprints and measures velocity; Kanban pulls continuously under WIP limits and
+measures throughput and cycle time. It is per project, not per ledger — an organisation's Portal can
+run Kanban while its App runs Scrum, and one dashboard shows both — and `/switch-methodology` changes
+it later without losing the backlog, the history or a single date.
+
 ## 4. Ask who is on the team, and offer to protect the rules
 
 Ask for the team: a name, a role (`PO` · `PM` · `SM` · `Dev` · `QA` · `Design`) and a GitHub handle each, and write them into the `## Team` table in `Config.md`. Skippable — one person working alone does not need a roster, and it can be filled in later from the dashboard's Settings or by hand. Explain it in one line: these are the names offered when assigning work, and what each person is matched against when they run `/whoami`.

@@ -95,6 +95,11 @@ setup_branch:   agile-ledger-setup         # branch used in a code repo to remov
 Beside those two sits **`Me.local.md`** — who *this* clone's person is, git-ignored and never
 committed. It is not part of the ledger's content; see **Joining a ledger somebody else created**.
 
+Each project folder's `Definitions.md` carries its own `methodology: scrum | kanban` — **per project,
+never per ledger** — and, under Kanban, its `wip_limits:`. `/register-repo` asks; `/workspace-status`
+reports each project's methodology beside the methodology-neutral numbers (throughput, cycle time)
+so projects on different methodologies can sit in one view.
+
 `Config.md` also holds the team, under a `## Team` heading — optional, and absent in older ledgers:
 
 ```
@@ -284,6 +289,31 @@ Record who the person at this clone is — the whole of a joiner's setup, and th
    means nobody can assign them work from the dashboard. Adding the row edits `Config.md`, the file
    most often under `CODEOWNERS`, so offer the two honest routes — ask the `PO`/`PM`, or open a PR —
    and never claim a protected branch accepted a push it will refuse.
+
+### `/switch-methodology <scrum|kanban>`
+Move one project between Scrum and Kanban **without losing anything**: the eight files are the same
+under both, so the switch changes which numbers lead and which ceremonies run, and nothing else.
+Proposal first, write second, and heavy by design.
+
+1. **Say what is kept**: every epic, story and bug with its state; the board; `Sprints-History.md`
+   untouched (a record under Kanban, the headline under Scrum); `Releases.md`; the roster, the rules,
+   every `Ready:`/`Started:`/`Delivered:` date.
+2. **Derive what the target needs**, exactly as `dashboard/agileledger/insights.py::transition`
+   does, so the session and the Settings screen propose the same figures. *To Kanban*: close any
+   open sprint first (its velocity is recorded), suggest WIP limits from the people on the board
+   and today's counts, say throughput and cycle time take over. *To Scrum*: a sprint length from the
+   old history (or 14 days); a **velocity from throughput** — points delivered per sprint-length
+   window over the last six windows, averaged over the windows with work, **windows shown**; the
+   count of Ready stories with no estimate, offered an estimation pass or a first sprint planned by
+   count. **Never invent a velocity or an estimate**; name the gap.
+3. **Reconstruct what Kanban left undetailed — proposals only.** Ideas never triaged and Drafts never
+   written up while the code moved on: mine the code repo per `references/reconstruction-guide.md`
+   and draft each as `🔍 reconstructed from git — needs review`, value `?? (confirm)`, no AC, no
+   estimate, no state. Skip on request, and when the repo cannot be read.
+4. **Confirm, then write** `methodology:` (and `wip_limits:` for Kanban) in the project's
+   `Definitions.md`, the confirmed drafts, and one ledger commit (`ledger(<slug>): switch to kanban`).
+   Report what was kept, what was derived and from what, and what the team still has to decide. Do
+   not call the switch complete while a gap from step 2 is open.
 
 ### `/register-repo <path|remote> [--from-git]`
 Add one code repo to the ledger.

@@ -58,7 +58,7 @@ the Registry — nothing is written into the code repo to make it work.
   never with invented value or acceptance criteria, never Ready/Delivered, never overwriting human content.
 - Sweeps read-only by default; every state-changing action is confirmed. Registry rows are never deleted.
 
-## 5. Commands (8; namespaced under the plugin)
+## 5. Commands (9; namespaced under the plugin)
 
 - `/init-ledger [path]` — create the ledger repo: `Registry.md` + `Config.md`, org + clone target,
   offered `git init`. Setup only; refuses to nest a second ledger root.
@@ -66,6 +66,10 @@ the Registry — nothing is written into the code repo to make it work.
   (`gh api user` first, then the git name) and recorded in the git-ignored `Me.local.md` at the ledger
   root. Run once per person, not per workspace: a joiner runs this *instead* of `/init-ledger`, which
   refuses to re-run setup on a ledger that exists. Identity is never written to a shared file.
+- `/switch-methodology <scrum|kanban>` — move one project between Scrum and Kanban without losing
+  anything: proposal first, every suggested number derived from the ledger with its arithmetic shown
+  (WIP limits from the board; a velocity from throughput over sprint-length windows), gaps named not
+  filled, undetailed ideas reconstructed from git as proposals only, then one key in `Definitions.md`.
 - `/register-repo <path|remote> [--from-git]` — add a code repo: its folder with the eight files (only
   if absent) and a Registry row; `--from-git` seeds proposed drafts from history. Writes nothing into
   the code repo.

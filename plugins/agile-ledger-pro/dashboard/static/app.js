@@ -1862,6 +1862,7 @@ function triageStrip() {
 function sprintPulse() {
   const repo = state.repo;
   const sprint = repo.sprint;
+  if (isKanban()) return flowPulse();
   const card = el('div', { class: 'side-card' }, el('h3', { text: 'Sprint pulse' }));
   if (!isSet(sprint.name)) {
     card.append(el('p', { class: 'hint', text: 'No sprint open.' }));
@@ -1894,6 +1895,34 @@ function sprintPulse() {
     text: capacity
       ? `${committed} pts committed of ${capacity} capacity · ${donePts} done`
       : `${committed} pts committed · ${donePts} done` }));
+  return card;
+}
+
+/** The Kanban counterpart of the sprint pulse: the columns against their
+ *  limits, and what the Insights report says about flow. */
+function flowPulse() {
+  const sprint = state.repo.sprint;
+  const card = el('div', { class: 'side-card' }, el('h3', { text: 'Flow' }));
+  const columns = state.workspace.vocabulary.board_columns;
+  const limits = wipLimits();
+  const rows = el('div', { class: 'pulse-cols' });
+  for (const c of columns) {
+    const items = sprint.board[c] || [];
+    rows.append(el('div', { class: 'pulse-col' },
+      glyph('story', 'In Sprint', c),
+      el('span', { class: 'grow', text: c }),
+      wipChip(c, items),
+      el('span', { class: 'mono', text: `${items.length} · ${pointsOf(items)}p` })));
+  }
+  card.append(rows);
+  const ins = state.insights && state.insightsSlug === state.slug ? state.insights.flow : null;
+  card.append(el('p', { class: 'hint', style: 'margin-top:10px',
+    text: ins
+      ? `${ins.throughput_weekly.items} items/week · cycle time ${ins.cycle_time_days ? ins.cycle_time_days.median + 'd' : 'not measurable yet'}`
+      : (Object.keys(limits).length ? 'Pull under the limits; Insights has throughput and cycle time.'
+         : 'No WIP limits set — add them in Settings.') }));
+  card.append(el('button', { class: 'btn small', type: 'button', style: 'margin-top:8px',
+    onclick: () => goTo('insights') }, 'Open Insights'));
   return card;
 }
 
@@ -2420,7 +2449,7 @@ VIEWS.board = () => {
   const wrap = el('div', {});
   const day = sprintDay(sprint);
 
-  if (!isSet(sprint.name)) {
+  if (!isSet(sprint.name) && !isKanban()) {
     wrap.append(el('div', { class: 'page-head' },
       el('div', { class: 'grow' },
         el('h1', { class: 'page-title', text: 'No sprint open' }),
@@ -2440,16 +2469,30 @@ VIEWS.board = () => {
   const early = needsYou().filter((f) => f.kind === 'early');
   const earlyIds = new Set(early.map((f) => f.id));
 
-  wrap.append(el('div', { class: 'page-head' },
-    el('div', { class: 'grow' },
-      el('div', { class: 'crumb' },
-        el('span', { class: 'mono', text: sprint.name }),
-        isSet(sprint.dates) ? el('span', { text: sprint.dates }) : null,
-        day ? el('span', { text: `day ${day.day} of ${day.total}` }) : null),
-      el('h1', { class: 'page-title' }, rich(show(sprint.goal)))),
-    el('div', { class: 'chips desktop-only' },
-      actionButton('close_sprint', { onclick: closeSprintForm }, 'Close sprint'),
-      actionButton('plan_sprint', { onclick: planSprintForm }, 'Replan'))));
+  if (isKanban()) {
+    // No sprint to name or count down: the board is the whole instrument,
+    // and its header says what the team is pulling under.
+    const limits = wipLimits();
+    wrap.append(el('div', { class: 'page-head' },
+      el('div', { class: 'grow' },
+        el('div', { class: 'crumb' },
+          el('span', { class: 'mono', text: 'kanban' }),
+          el('span', { text: Object.keys(limits).length
+            ? 'WIP limits ' + Object.entries(limits).map(([c, n]) => `${c} ${n}`).join(' · ')
+            : 'no WIP limits set — add them in Settings' })),
+        el('h1', { class: 'page-title', text: 'Board' }))));
+  } else {
+    wrap.append(el('div', { class: 'page-head' },
+      el('div', { class: 'grow' },
+        el('div', { class: 'crumb' },
+          el('span', { class: 'mono', text: sprint.name }),
+          isSet(sprint.dates) ? el('span', { text: sprint.dates }) : null,
+          day ? el('span', { text: `day ${day.day} of ${day.total}` }) : null),
+        el('h1', { class: 'page-title' }, rich(show(sprint.goal)))),
+      el('div', { class: 'chips desktop-only' },
+        actionButton('close_sprint', { onclick: closeSprintForm }, 'Close sprint'),
+        actionButton('plan_sprint', { onclick: planSprintForm }, 'Replan'))));
+  }
 
   // The sprint's numbers, up where a decision gets made.
   const stats = el('div', { class: 'sprint-stats' });
@@ -2518,7 +2561,7 @@ function boardPager(columns, sprint, blockedIds, earlyIds) {
       onclick: () => { remember('sprint.column', c); render(); } },
       glyph('story', 'In Sprint', c),
       el('span', { text: c }),
-      el('span', { class: 'mono', text: String(items.length) })));
+      wipChip(c, items) || el('span', { class: 'mono', text: String(items.length) })));
   }
   box.append(chips);
 
@@ -2566,6 +2609,7 @@ function boardGrid(columns, sprint, lanes, blockedIds, earlyIds) {
     head.append(el('div', { class: 'col-head' },
       glyph('story', 'In Sprint', c),
       el('span', { class: 'grow', text: c }),
+      wipChip(c, items),
       el('span', { class: 'mono hint', text: `${items.length} · ${pointsOf(items)}p` })));
   }
   grid.append(head);
@@ -3638,6 +3682,50 @@ VIEWS.insights = () => {
  * on the ledger repo, shown further down this same screen.
  */
 
+/* ------------------------------------------------------------ methodology --
+ * Per project, from Definitions.md: `scrum` (the default) or `kanban`. The
+ * eight files are the same either way; what changes is which numbers lead
+ * and which ceremonies the page offers. A Kanban board has no sprint to plan
+ * or close, runs under WIP limits, and is read by throughput and cycle time.
+ */
+const methodology = () => {
+  const config = state.repo && state.repo.definitions && state.repo.definitions.config;
+  const way = String((config && config.methodology) || '').trim().toLowerCase();
+  return way === 'kanban' ? 'kanban' : 'scrum';
+};
+const isKanban = () => methodology() === 'kanban';
+
+/** `wip_limits: In Progress 3 · In Review 2` from Definitions.md, by column. */
+function wipLimits() {
+  const config = state.repo && state.repo.definitions && state.repo.definitions.config;
+  const text = String((config && config.wip_limits) || '');
+  const columns = (state.workspace.vocabulary && state.workspace.vocabulary.board_columns) || [];
+  const out = {};
+  for (const part of text.split(/[·,;|]/)) {
+    const m = part.match(/^\s*(.+?)\s*[:=]?\s*(\d+)\s*$/);
+    if (!m) continue;
+    const column = columns.find((c) => c.toLowerCase() === m[1].trim().toLowerCase());
+    if (column) out[column] = parseInt(m[2], 10);
+  }
+  return out;
+}
+
+/** The count-against-limit chip a Kanban column header wears. */
+function wipChip(column, items) {
+  const limit = wipLimits()[column];
+  if (!isKanban() || limit === undefined) return null;
+  const over = items.length > limit;
+  return el('span', { class: `wipchip${over ? ' over' : ''}`,
+    title: over ? `over the WIP limit of ${limit}` : `WIP limit ${limit}` },
+    `${items.length}/${limit}`);
+}
+
+/** Actions that only mean something under Scrum. */
+const SPRINT_ONLY = new Set(['plan_sprint', 'close_sprint']);
+function applies(action) {
+  return !(isKanban() && SPRINT_ONLY.has(action));
+}
+
 /** Roster rows holding a role that may run `action`; empty when it is open. */
 function holdersOf(action) {
   const roles = (state.workspace.vocabulary.action_roles || {})[action] || [];
@@ -3701,7 +3789,7 @@ function identityPrompt() {
  * site reads the same as it did before.
  */
 function actionButton(action, attrs, ...label) {
-  if (!mayDo(action)) return null;
+  if (!applies(action) || !mayDo(action)) return null;
   return el('button', { class: 'btn', type: 'button', ...attrs }, ...label);
 }
 
@@ -3749,6 +3837,10 @@ function lockBanner() {
 }
 
 const PROJECT_SETTINGS = [
+  { key: 'methodology', label: 'Methodology', options: ['scrum', 'kanban'],
+    hint: 'per project — the board, the pulse and the Insights headline adapt' },
+  { key: 'wip_limits', label: 'WIP limits',
+    hint: 'kanban: e.g. In Progress 3 · In Review 2; the board shows count/limit' },
   { key: 'language', label: 'Language', hint: 'the language the ledger is written in' },
   { key: 'estimation', label: 'Estimation scale',
     options: ['fibonacci', 'tshirt', 'linear'], hint: 'the story-point scale' },
@@ -3792,6 +3884,8 @@ VIEWS.settings = () => {
     'This project', `${repo.slug}/Definitions.md`, PROJECT_SETTINGS,
     repo.definitions.config || {},
     (values) => act('update_project_config', { values }, 'Project settings saved'), locked));
+
+  wrap.append(switchCard(locked));
 
   wrap.append(settingsCard(
     'This ledger', 'Config.md', LEDGER_SETTINGS,
@@ -3963,6 +4057,70 @@ function youHint(me) {
   return shown
     ? `matched against the roster, so @${shown.handle} and ${shown.name} find the same work`
     : 'matched against the roster by name; add GitHub handles there to match those too';
+}
+
+/* ------------------------------------------------------ switching method --
+ * Everything here is derived by insights.transition and shown with its
+ * arithmetic, so a person agrees to numbers they can argue with. The switch
+ * itself is one key in Definitions.md; the reconstruction of undetailed work
+ * from git stays in the session, where /switch-methodology does it.
+ */
+function switchCard(locked) {
+  const to = isKanban() ? 'scrum' : 'kanban';
+  const card = el('div', { class: 'card setcard' });
+  card.append(el('div', { class: 'gh' },
+    el('h2', { text: `Switch to ${to}` }),
+    el('span', { class: 'c mono', text: 'Definitions.md' }),
+    locked ? lockChip() : null));
+  card.append(el('p', { class: 'hint set-blurb',
+    text: `This project runs ${methodology()}. The eight files are the same under both; a switch changes `
+        + 'which numbers lead and which ceremonies run, and loses nothing — the history is never deleted.' }));
+  const body = el('div', { class: 'switchbody' });
+  card.append(body);
+  const list = (items, cls) => el('ul', { class: `switchlist${cls ? ' ' + cls : ''}` },
+    items.map((k) => el('li', { text: k })));
+  const assess = async () => {
+    body.replaceChildren(el('p', { class: 'hint', text: 'Deriving…' }));
+    const t = await api(`/api/repo/${encodeURIComponent(state.slug)}/transition?to=${to}`);
+    body.replaceChildren();
+    if (!t.ok) { body.append(el('p', { class: 'hint', text: t.reason })); return; }
+    body.append(el('h3', { text: 'Kept' }), list(t.keeps));
+    if (t.needs.length) body.append(el('h3', { text: 'Needs' }), list(t.needs));
+    const sg = t.suggests || {};
+    const lines = [];
+    if (sg.wip_limits) lines.push(`WIP limits: ${Object.entries(sg.wip_limits).map(([c, n]) => `${c} ${n}`).join(' · ')}`);
+    if (sg.sprint_length_days) lines.push(`Sprint length: ${sg.sprint_length_days} days`);
+    if (sg.velocity !== undefined) lines.push(`Velocity: ${sg.velocity} pts (${sg.items_per_sprint} items) per sprint`);
+    if (lines.length) {
+      body.append(el('h3', { text: 'Suggested' }), list(lines),
+        sg.why ? el('p', { class: 'hint', text: `Why: ${sg.why}` }) : null);
+    }
+    if (sg.windows) {
+      // The windows the velocity came from, so the number can be argued with.
+      body.append(el('table', { class: 'grid ins-table' },
+        el('thead', {}, el('tr', {}, ['Window', 'Points', 'Items'].map((h) => el('th', { text: h })))),
+        el('tbody', {}, sg.windows.map((w) => el('tr', {},
+          el('td', { text: `${w.from} → ${w.to}` }),
+          el('td', { class: 'num', text: w.points }), el('td', { class: 'num', text: w.items }))))));
+    }
+    if (t.gaps.length) body.append(el('h3', { text: 'Still missing' }), list(t.gaps, 'gaps'));
+    body.append(el('p', { class: 'hint',
+      text: 'Reconstructing undetailed ideas and drafts from git is the session’s job: run /switch-methodology there for that part.' }));
+    if (!locked) {
+      body.append(el('div', { class: 'setfoot' }, el('span', { class: 'grow' }),
+        el('button', { class: 'btn primary', type: 'button', onclick: async () => {
+          const values = { methodology: to };
+          if (sg.wip_limits) {
+            values.wip_limits = Object.entries(sg.wip_limits).map(([c, n]) => `${c} ${n}`).join(' · ');
+          }
+          await act('update_project_config', { values }, `Now running ${to}`);
+          await loadRepo(state.slug);
+        } }, `Switch to ${to}`)));
+    }
+  };
+  card.append(el('div', { class: 'setfoot' }, el('span', { class: 'grow' }),
+    el('button', { class: 'btn small', type: 'button', onclick: assess }, 'Show what a switch needs')));
+  return card;
 }
 
 /** Who you are on this machine — a joiner's whole setup, in one card. */

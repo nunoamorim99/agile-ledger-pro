@@ -1308,6 +1308,23 @@ select { color-scheme: inherit; }
   border-left: 3px solid var(--warning); background: var(--sunken); border-radius: var(--radius);
 }
 
+/* ------------------------------------------------------------ methodology */
+
+/* A Kanban column's count against its limit. Over the limit it goes to the
+   warning tone — a limit is the one number on the board meant to be obeyed. */
+.wipchip {
+  padding: 1px 7px; margin-right: 6px; flex: none;
+  background: var(--sunken); color: var(--ink2);
+  border: 1px solid var(--rule); border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.wipchip.over { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+
+.switchbody { padding: 0 18px; }
+.switchbody h3 { margin: 12px 0 4px; font-size: 12.5px; font-weight: 650; color: var(--ink2); }
+.switchlist { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.switchlist.gaps li { color: var(--warn); }
+
 /* --------------------------------------------------------- the toolbar */
 
 .toolbar {

@@ -77,6 +77,19 @@ person is carrying half of everything — it is a distribution, never a ranking,
 promises the ledger is not a productivity leaderboard. `/insights` prints the same report in the
 session, to the digit.
 
+**Scrum or Kanban, per project.** Each project's `Definitions.md` carries `methodology:` (default
+`scrum`), so an organisation's Portal can run Kanban while its App runs Scrum, in one dashboard. The
+eight files are the same under both; what changes is which numbers lead and which ceremonies the
+page offers. Under Kanban the Sprint tab becomes a **Board** with no sprint to plan or close, each
+column wears its count against the `wip_limits:` from Definitions.md — over the limit is shown in the
+warning tone and never enforced, because a limit is advice the board makes visible — the pulse on
+Today reports flow instead of a burndown, and Insights opens with throughput and cycle time. Settings
+has a **Switch to …** card that shows what a switch would keep, need and suggest, every number with
+its derivation: WIP limits from the people on the board; a Scrum velocity computed from Kanban
+throughput over six sprint-length windows, windows shown; and the gaps — unestimated stories, nothing
+delivered recently — named rather than filled. The switch itself is one key; reconstructing undetailed
+ideas from git is `/switch-methodology`'s job in the session.
+
 **Settings** is a screen of its own: everything the skill reads before it acts — this project's
 `Definitions.md` (language, estimation scale, whether git may run in the code repo) and the ledger's
 `Config.md` (placement, default project, org, commit and push policy, branches) — plus the team
