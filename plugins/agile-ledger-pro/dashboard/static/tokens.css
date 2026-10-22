@@ -20,6 +20,7 @@
   --accent: #0B7A75;      /* turquoise — "in motion", links, primary buttons (5.2:1 on white) */
   --accent-soft: #E4F4F2; /* accent tint; accent text on it is 4.6:1 */
   --on-accent: #FFFFFF;   /* text/glyph on accent fills */
+  --brand: #7C3AED;       /* Pro violet — the logo tile only, never UI */
 
   /* reserved status — never a chart series, never colour alone */
   --good: #1D7148;    --good-soft: #E2F1E9;     /* delivered, fixed */
@@ -40,6 +41,7 @@
     --ink: #E7E9ED; --ink2: #B3B9C3; --ink3: #8E95A1;
     --rule: #252931; --rule2: #343A45;
     --accent: #3FD4C6; --accent-soft: #0F2B2A; --on-accent: #0E1014;
+    --brand: #8B5CF6;
     --good: #5BC593; --good-soft: #11281D;
     --warn: #E6AE4A; --warn-soft: #2A2211;
     --serious: #EF8A5C; --serious-soft: #2D1A11;
@@ -53,6 +55,7 @@
   --ink: #E7E9ED; --ink2: #B3B9C3; --ink3: #8E95A1;
   --rule: #252931; --rule2: #343A45;
   --accent: #3FD4C6; --accent-soft: #0F2B2A; --on-accent: #0E1014;
+  --brand: #8B5CF6;
   --good: #5BC593; --good-soft: #11281D;
   --warn: #E6AE4A; --warn-soft: #2A2211;
   --serious: #EF8A5C; --serious-soft: #2D1A11;

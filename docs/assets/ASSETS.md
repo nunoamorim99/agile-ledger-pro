@@ -4,7 +4,8 @@ Drop the Higgsfield-generated images here with these exact filenames so the READ
 
 | File | Used in | Suggested prompt theme |
 |---|---|---|
-| `cover.png` | top of README | hero banner for the whole skill — calm, organized, plain-Markdown command center |
+| `logo/agile-ledger-pro-horizontal-color-{dark,light}.svg` | top of README | the suite logo lockup (not Higgsfield — from the suite logo pack); GitHub picks the one matching the reader's theme |
+| `cover.png` | GitHub social preview only (no longer in the README) | hero banner for the whole skill — calm, organized, plain-Markdown command center |
 | `group-capture.png` | LinkedIn / optional README | capturing ideas & bugs (green) |
 | `group-triage.png` | LinkedIn / optional README | sorting inbox into epics/stories (green) |
 | `group-backlog.png` | LinkedIn / optional README | shaping detailed user stories (blue) |

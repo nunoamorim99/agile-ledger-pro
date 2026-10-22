@@ -1,9 +1,10 @@
-<!-- Cover: docs/assets/cover.png  (generated with Higgsfield — see docs/assets/ASSETS.md) -->
+<!-- Logo: docs/assets/logo/ — GitHub picks the lockup that matches the reader's theme (see docs/assets/ASSETS.md) -->
 <p align="center">
-  <img src="docs/assets/cover.png" alt="Agile-Ledger Pro" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/agile-ledger-pro-horizontal-color-dark.svg">
+    <img src="docs/assets/logo/agile-ledger-pro-horizontal-color-light.svg" alt="Agile-Ledger Pro" height="96">
+  </picture>
 </p>
-
-<h1 align="center">Agile-Ledger Pro</h1>
 
 <p align="center">
   <strong>Plain-Markdown Scrum &amp; Agile product management for Claude Code.</strong><br>
