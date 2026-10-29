@@ -400,8 +400,10 @@ class Repo:
             fresh["state"] = self._epic_state(epic)
             fresh["emoji"] = render.EPIC_STATE_EMOJI[fresh["state"]]
             updated = render.epic_title_line(fresh, line)
+            # Not allowed to lose anything: a state glyph and two figures move,
+            # and none of those are words. If a word goes, the guard says so.
             if updated != as_read:
-                handle.replace((at, at + 1), [updated], allow=True)
+                handle.replace((at, at + 1), [updated])
 
         refreshed = self.epics()
         by_id = {s["id"]: s for s in self.stories()}
@@ -475,7 +477,9 @@ class Repo:
         row = dict(old or {"id": story["id"], "extra": [], "assignee_note": ""})
         row["title"] = story.get("title") or row.get("title", "")
         if not (old and label and label in (old.get("state") or "")):
-            row["state"] = label
+            # "✅ Delivered — re-opened by US-074": the state moves, the note stays.
+            _, sep, note = (old.get("state") if old else "").partition(mdutil.DASH)
+            row["state"] = label + (f" {mdutil.DASH} {note.strip()}" if sep and note.strip() else "")
         row["priority"] = story.get("priority", "")
         row["points"] = story.get("estimate", "")
         row["assignee"] = story.get("assignee", "")
@@ -489,7 +493,14 @@ class Repo:
             return
         prefix = re.match(r"^(\s*[-*]\s+)", old["raw"])
         line = (prefix.group(1) if prefix else "- ") + line[2:]
-        handle.replace((old["line"], old["line"] + 1), [line], allow=True)
+        # Only the old values that changed may go — not the whole line, which
+        # would hide a note lost with them.
+        for key in ("title", "priority", "points", "assignee"):
+            if render._norm(row.get(key)) != render._norm(old.get(key)):
+                handle.allow(str(old.get(key) or ""))
+        if render._norm(row.get("state")) != render._norm(old.get("state")):
+            handle.allow((old.get("state") or "").partition(mdutil.DASH)[0])
+        handle.replace((old["line"], old["line"] + 1), [line])
 
     # -- saving ------------------------------------------------------------
 

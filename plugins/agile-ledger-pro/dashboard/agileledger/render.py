@@ -205,10 +205,17 @@ def _deps_block(new_ids: list[str], hit) -> list[str]:
 
     "US-003 — needs the auth API first" is a reason, not decoration; when the
     IDs change the prose stays, and only a body line naming a dependency that
-    was removed goes with it.
+    was removed goes with it. A link to another repo's item
+    (``../places-api/…``) is not one of this list's IDs, so it is never
+    stripped out or dropped with a line.
     """
-    ids = lambda text: {i.upper() for i in re.findall(r"\b((?:US|EPIC|BUG)-\d+)\b",
-                                                       mdutil.strip_links(text), re.IGNORECASE)}
+    from .parse import EXTERNAL_LINK
+
+    def ids(text):
+        local = EXTERNAL_LINK.sub(" ", text)
+        return {i.upper() for i in re.findall(r"\b((?:US|EPIC|BUG)-\d+)\b",
+                                              mdutil.strip_links(local), re.IGNORECASE)}
+
     inline, body = "", []
     if hit:
         inline, body = hit[2]["inline"], list(hit[2]["body"])
@@ -217,10 +224,18 @@ def _deps_block(new_ids: list[str], hit) -> list[str]:
     keep = set(new_ids)
     body = [l for l in body if not (ids(l) and not ids(l) <= keep)]
     in_body = set().union(*[ids(l) for l in body]) if body else set()
-    prose = re.sub(r"\[[^\]]*\]\([^)]*\)", " ", inline)
+    # Set external links aside so stripping this repo's IDs cannot touch them.
+    kept_links = []
+
+    def stash(m):
+        kept_links.append(m.group(0))
+        return f"\x00{len(kept_links) - 1}\x00"
+    prose = EXTERNAL_LINK.sub(stash, inline)
+    prose = re.sub(r"\[[^\]]*\]\([^)]*\)", " ", prose)
     prose = re.sub(r"\b(?:US|EPIC|BUG)-\d+\b", " ", prose, flags=re.IGNORECASE)
     prose = prose.strip(" \t·,;:" + DASH + "–-")
     prose = "" if prose == EMPTY else re.sub(r"\s{2,}", " ", prose)
+    prose = re.sub("\x00(\\d+)\x00", lambda m: kept_links[int(m.group(1))], prose)
     listed = [d for d in new_ids if d not in in_body]
     value = DOT.join(link(d) for d in listed) if listed else ("" if in_body else EMPTY)
     head = "**Dependencies:**" + (f" {value}" if value else "")
@@ -425,8 +440,6 @@ def epic_title_line(epic: dict, line: str) -> str:
     other part the line carries stays where it was, in its own words.
     """
     roll = epic.get("rollup") or {}
-    stories = f"{roll.get('stories_done', 0)}/{roll.get('stories_total', 0)} stories"
-    points = f"{roll.get('points_done', 0)}/{roll.get('points_total', 0)} pts"
     parts = [p.strip() for p in line.split(mdutil.MIDDOT)]
     m = re.match(r"^(\s*\*\*.+?\*\*)\s*(.*)$", parts[0])
     if not m:
@@ -443,13 +456,19 @@ def epic_title_line(epic: dict, line: str) -> str:
         tail = (glyph + " " + tail).strip()
     # A line written without rollups keeps that shape: an unrelated action is
     # no reason to reformat an epic nobody touched.
+    # Only the figure itself is replaced, inside its part: "2/2 pts — re-opened
+    # by US-074" is a figure *and* a note, and the note is somebody's words.
     meta = []
     for part in parts[1:]:
         if re.search(r"\d+\s*/\s*\d+\s*stor", part):
-            meta.append(stories)
+            part = re.sub(r"\d+(\s*/\s*)\d+(?=\s*stor)",
+                          lambda m: f"{roll.get('stories_done', 0)}{m.group(1)}{roll.get('stories_total', 0)}",
+                          part, count=1)
         elif re.search(r"\d+\s*/\s*\d+\s*pts?\b", part):
-            meta.append(points)
-        elif part:
+            part = re.sub(r"\d+(\s*/\s*)\d+(?=\s*pts?\b)",
+                          lambda m: f"{roll.get('points_done', 0)}{m.group(1)}{roll.get('points_total', 0)}",
+                          part, count=1)
+        if part:
             meta.append(part)
     head = f"{bold} {tail}".rstrip()
     return head + (SEP + DOT.join(meta) if meta else "")

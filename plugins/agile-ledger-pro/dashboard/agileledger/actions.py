@@ -854,6 +854,16 @@ def close_sprint(repo: Repo, retro_kept: str = "", retro_try: str = "", **_) -> 
         # board is rebuilt next sprint and the `pulled` stamps go with it.
         f"Pulled in: {', '.join(i['id'] for i in pulled) if pulled else EMPTY}"
         + (f" ({pts(pulled)} pts)" if pulled else ""),
+    ]
+    # The board and the Blocked list are cleared below. What people wrote on
+    # them — a note on a card, why something was stuck — goes into the record.
+    said = [f"{i['id']} {mdutil.DASH} {'; '.join(i['extra'])}"
+            for col in BOARD_COLUMNS for i in board.get(col, []) if i.get("extra")]
+    said += [f"{b['id']} blocked {mdutil.DASH} {b['reason']}"
+             for b in sprint.get("blocked") or [] if b.get("reason")]
+    if said:
+        entry.append("At close: " + " · ".join(said))
+    entry += [
         "Retro notes:",
         f"- Kept: {retro_kept}",
         f"- Try: {retro_try}",
@@ -930,9 +940,18 @@ def cut_release(repo: Repo, version: str = "", title: str = "", theme: str = "",
         f"Theme: {theme or EMPTY}",
         f"Stories: {', '.join(ids) if ids else EMPTY}",
         f"Epics touched: {', '.join(epics) if epics else EMPTY}",
-        "",
     ]
+    # The Increment is emptied below; its lines (PR links, notes, the Fixed
+    # tags) move under the version instead of disappearing.
     handle = repo.file("Releases.md")
+    inc = mdutil.find_section(handle.lines, 2, lambda t: "increment" in t.lower())
+    if inc:
+        mask = mdutil.comment_mask(handle.lines)
+        shipped = [handle.lines[i] for i in range(inc[0] + 1, inc[1])
+                   if not mask[i] and re.match(r"^\s{0,3}[-*]\s+\S", handle.lines[i])]
+        if shipped:
+            entry += ["Shipped:", ""] + shipped
+    entry.append("")
     span = mdutil.find_section(handle.lines, 2, lambda t: "version history" in t.lower())
     if not span:
         raise ActionError("Releases.md has no '## Version history' section")
@@ -944,7 +963,7 @@ def cut_release(repo: Repo, version: str = "", title: str = "", theme: str = "",
 
     inc_span = mdutil.find_section(handle.lines, 2, lambda t: "increment" in t.lower())
     if inc_span:
-        _set_section_bullets(handle, inc_span, [], allow=True)
+        _set_section_bullets(handle, inc_span, [])
 
     return {"message": f"{version} cut with {len(ids)} item(s)",
             "version": version, "command": f"/release {version}"}
@@ -1308,6 +1327,21 @@ def commit_ledger(repo: Repo, message: str = "", **_) -> dict:
 # Audit (read-only)
 # --------------------------------------------------------------------------
 
+def _ids_in(repo: Repo, slug: str) -> set | None:
+    """Every story, epic and bug ID in a sibling project, or None if it is not here."""
+    if slug == repo.slug or repo.flat or not re.fullmatch(r"[A-Za-z0-9._-]+", slug):
+        return None
+    try:
+        other = Repo(repo.root, slug)
+    except FileNotFoundError:
+        return None
+    ids = {s["id"] for s in other.stories()} | {b["id"] for b in other.bugs()}
+    for epic in other.epics():
+        ids.add(epic["id"])
+        ids |= {i["id"] for i in epic.get("stories") or []}
+    return ids
+
+
 def check_ledger(repo: Repo, **_) -> dict:
     """The mechanical half of `/ledger-check`: drift, orphans, broken links."""
     issues = []
@@ -1332,6 +1366,13 @@ def check_ledger(repo: Repo, **_) -> dict:
         for dep in story.get("dependencies") or []:
             if dep not in stories:
                 issues.append(f"{story_id} depends on {dep}, which has no detail entry.")
+        # A link into another project is checked there, when that project is
+        # in this ledger; one that is not cloned here is left alone.
+        for ref in story.get("external_dependencies") or []:
+            other, dep = ref.split("/", 1)
+            known = _ids_in(repo, other)
+            if known is not None and dep not in known:
+                issues.append(f"{story_id} depends on {other} {dep}, which {other} does not have.")
 
     for item_id, epic_id in indexed.items():
         item = next(i for e in epics for i in e.get("stories") or []

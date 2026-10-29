@@ -1985,6 +1985,7 @@ connection never costs me a paragraph.
 Edge cases we argued about: Safari private mode drops storage.
 
 **Dependencies:** [US-003](User-Stories.md#us-003) — the magic link must land first, because the draft key is the session
+Also needs [US-005](../places-api/User-Stories.md#us-005) and [US-099](../places-api/User-Stories.md#us-099) from places-api.
 
 **Notes:** Ruben prototyped this in March.
 Spike notes live in the wiki.
@@ -2003,7 +2004,7 @@ PARKED = """#### US-007
 
 **Fax export** 🗑️  ·  Parent: [EPIC-001](Epic-Backlog.md#epic-001)
 
-- **Status:** Discarded (2026-02-02)
+- **Status:** Discarded (2026-02-02) — was Paused since January
 - **Reason:** nobody has a fax
 
 **Notes:** —
@@ -2082,10 +2083,13 @@ def _messy(led) -> None:
     eb = eb.replace(
         "- [US-004](User-Stories.md#us-004) · Guided setup checklist · 📝 Draft · 🟢\n",
         "- [US-004](User-Stories.md#us-004) · Guided setup checklist · 📝 Draft · 🟢 · Ruben — ready after the API lands\n"
-        "- [US-006](User-Stories.md#us-006) · Offline drafts · ✅ Ready · 🟡 · 5 pts\n"
+        "- [US-006](User-Stories.md#us-006) · Offline drafts · ✅ Ready — split out of US-002 in review · 🟡 · 5 pts\n"
         "- [US-007](User-Stories.md#us-007) · Dark mode · ❄️ Paused\n"
         "- [US-008](User-Stories.md#us-008) · Fax export · 🗑️ Discarded\n", 1)
     eb = eb.replace("### EPIC-002\n", MESSY_EPIC + "\n### EPIC-002\n", 1)
+    # A stale figure with a note on the same part: the rebuild fixes the figure.
+    eb = eb.replace("· 1/4 stories · 5/16 pts\n",
+                    "· 1/4 stories · 5/16 pts — re-opened 2026-08-10 by US-074\n", 1)
     eb = eb.replace("**Area:** onboarding\n",
                     "**Area:** onboarding\n\n**Notes:** onboarding research lives in Dovetail;\n"
                     "ask Marta for access.\n", 1)
@@ -2124,6 +2128,9 @@ MESSY_PHRASES = [
     "a locked-down view for shared screens in stores.",
     "ask Marta for access.",
     "pairing with Marta",
+    "— re-opened 2026-08-10 by US-074",
+    "— split out of US-002 in review",
+    "Also needs [US-005](../places-api/User-Stories.md#us-005) and [US-099](../places-api/User-Stories.md#us-099) from places-api.",
 ]
 
 
@@ -2264,6 +2271,73 @@ def test_the_three_misreads_are_read_right():
         issues = led.run("check")["issues"]
         check(not any("US-007" in i or "US-008" in i or "EPIC-004" in i for i in issues),
               f"/ledger-check has nothing to say about them ({issues})")
+
+
+def test_field_report_two():
+    """The second org report: a note beside a rollup, a status naming two
+    states, and a dependency in another repo."""
+    with Ledger() as led:
+        _messy(led)
+        # A — the figure is fixed, the note beside it stays, and the line is
+        # not exempt from the guard.
+        led.run("add_idea", text="x")
+        eb = (led.root / "demo-app" / "Epic-Backlog.md").read_text(encoding="utf-8")
+        check("· 1/6 stories · 5/18 pts — re-opened 2026-08-10 by US-074" in eb,
+              "a stale rollup is corrected in place and its note kept")
+        line = render.epic_title_line({"rollup": {"stories_done": 1, "stories_total": 1,
+                                                  "points_done": 3, "points_total": 3}, "emoji": "✅"},
+                                      "**X** ✅  ·  0/1 story · 0/3 pts")
+        equal(line, "**X** ✅  ·  1/1 story · 3/3 pts", "only the numbers move, the unit stays as written")
+
+        # B — "Discarded … — was Paused" is Discarded.
+        states = {s["id"]: s["state"] for s in led.repo().stories()}
+        equal(states["US-008"], "Discarded", "the state named first in the Status is the state")
+
+        # An index-line state note survives the state changing.
+        led.run("pull_into_sprint", items=["US-006"])
+        e1 = next(e for e in led.repo().epics() if e["id"] == "EPIC-001")
+        us6 = next(i for i in e1["stories"] if i["id"] == "US-006")
+        check(us6["state"].startswith("\U0001f3c3 In Sprint") and "split out of US-002" in us6["state"],
+              f"the state moves and its note stays ({us6['state']})")
+
+    with Ledger() as led:
+        _messy(led)
+        # C — links into another project are not this project's IDs.
+        s6 = next(s for s in led.repo().stories() if s["id"] == "US-006")
+        equal(s6["dependencies"], ["US-003"], "a link to places-api is not a local dependency")
+        equal(s6["external_dependencies"], ["places-api/US-005", "places-api/US-099"],
+              "it is kept as places-api's")
+        issues = led.run("check")["issues"]
+        check(not any("US-005" in i or "US-099" in i for i in issues),
+              f"with places-api not in this ledger, its links are left alone ({issues})")
+        shutil.copytree(led.root / "demo-app", led.root / "places-api")
+        issues = led.run("check")["issues"]
+        check(any("places-api US-099" in i for i in issues),
+              "with places-api here, a link to an item it lacks is reported")
+        check(not any("places-api US-005" in i for i in issues), "and one it has is not")
+
+
+def test_closing_and_releasing_carry_what_was_written():
+    with Ledger() as led:
+        _messy(led)
+        led.run("set_blocked", item_id="US-002", reason="waiting on Google review", blocked=True)
+        led.run("close_sprint", retro_kept="pairing", retro_try="smaller stories")
+        history = (led.root / "demo-app" / "Sprints-History.md").read_text(encoding="utf-8")
+        check("pairing with Marta" in history, "a note on a board card goes into the sprint record")
+        check("waiting on Google review" in history, "and so does why something was blocked")
+        sprint = led.repo().history()["sprints"][0]
+        equal([r["label"] for r in sprint["retro"]], ["Kept", "Try"], "the retro still reads")
+
+    with Ledger() as led:
+        led.run("move_board_item", item_id="US-002", column="In PR")
+        led.run("complete_item", item_id="US-002", pr="https://github.com/acme/demo/pull/42")
+        led.run("cut_release", title="SSO")
+        releases = (led.root / "demo-app" / "Releases.md").read_text(encoding="utf-8")
+        check("https://github.com/acme/demo/pull/42" in releases,
+              "an Increment line's PR link moves under the version, not away")
+        v = led.repo().releases()["versions"][0]
+        check("US-002" in v["stories"], "and the version still lists its stories")
+        equal(led.repo().releases()["increment"], [], "the Increment is empty after the cut")
 
 
 def test_a_lossy_write_is_refused_and_nothing_is_saved():

@@ -409,15 +409,43 @@ def _entry_state(hits: list[str], status: str, emoji: str, glyphs: dict) -> str:
     """
     if len(hits) == 1:
         return hits[0]
+    # The state named *first* in the Status text is the current one:
+    # "Discarded (2026-07-29) — was Paused since May" is Discarded.
     low = (status or "").lower()
-    for s in hits:
-        if s.lower() in low:
-            return s
+    named = sorted((low.find(s.lower()), s) for s in hits if s.lower() in low)
+    if named:
+        return named[0][1]
     for s in hits:
         glyph = glyphs.get(s, "")
         if glyph and emoji and emoji.startswith(glyph[0]):
             return s
     return hits[0]
+
+
+#: A link whose target leaves this project's folder — ``../places-api/…`` —
+#: names another repo's item. Its ID means nothing here.
+EXTERNAL_LINK = re.compile(r"\[([^\]]*)\]\((\.\./([^/)]+)/[^)]*)\)")
+_ITEM_ID = re.compile(r"\b((?:US|EPIC|BUG)-\d+)\b", re.IGNORECASE)
+
+
+def _dependencies(text: str) -> tuple[list[str], list[str]]:
+    """``(local IDs, ["places-api/US-005", ...])`` from a Dependencies block.
+
+    Checking another repo's US-005 against this repo's IDs either raised a
+    false alarm or, worse, passed because a local US-005 happened to exist.
+    """
+    external = []
+    for m in EXTERNAL_LINK.finditer(text or ""):
+        for i in _ITEM_ID.findall(m.group(1) + " " + m.group(2).rsplit("#", 1)[-1]):
+            ref = f"{m.group(3)}/{i.upper()}"
+            if ref not in external:
+                external.append(ref)
+    local = EXTERNAL_LINK.sub(" ", text or "")
+    ids = []
+    for i in _ITEM_ID.findall(strip_links(local)):
+        if i.upper() not in ids:
+            ids.append(i.upper())
+    return ids, external
 
 
 #: The story values a writer compares against what was read. Only a value
@@ -461,8 +489,7 @@ def parse_stories(lines: list[str]) -> list[dict]:
                 criteria += mdutil.list_items(ac_block["body"])[0]
 
             deps_text = _block_text(blocks, "Dependencies")
-            deps = [i.upper() for i in re.findall(r"\b((?:US|EPIC|BUG)-\d+)\b",
-                                                  strip_links(deps_text), re.IGNORECASE)]
+            deps, external = _dependencies(deps_text)
 
             known = {"story", "acceptance criteria", "dependencies", "notes",
                      "ready", "started", "delivered", "reason", "what shipped"}
@@ -487,6 +514,7 @@ def parse_stories(lines: list[str]) -> list[dict]:
                 "criteria": criteria,
                 "criteria_met": criteria_met,
                 "dependencies": deps,
+                "external_dependencies": external,
                 "dependencies_text": deps_text,
                 # The flow dates. Optional, and absent from every file written
                 # before they existed: a story has always carried one date
