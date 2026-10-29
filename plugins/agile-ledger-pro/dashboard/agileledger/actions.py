@@ -23,7 +23,7 @@ from . import mdutil, render, resolve
 from .mdutil import EMPTY
 from .model import (BOARD_COLUMNS, BUG_STATE_EMOJI, BUG_STATES, STORY_STATE_EMOJI,
                     STORY_STATE_LABEL, STORY_STATES, id_rank, link, slugify)
-from .store import Repo
+from .store import LossError, Repo
 
 
 class ActionError(Exception):
@@ -55,9 +55,17 @@ def _find_state_section(handle, state: str, states: list[str]):
     return None
 
 
-def _set_section_bullets(handle, span: tuple[int, int], bullets: list[str]) -> None:
-    """Replace a section's top-level bullets, keeping its prose and headings."""
+def _set_section_bullets(handle, span: tuple[int, int], bullets: list[str],
+                         *, allow: bool = False) -> None:
+    """Replace a section's top-level bullets, keeping its prose and headings.
+
+    ``allow`` says the bullets being replaced are meant to go (a board cleared
+    at sprint close, an Increment rolled into a version); without it the
+    save-time guard holds this to rewriting what it read.
+    """
     start, end = span
+    if allow:
+        handle.allow("\n".join(handle.lines[start + 1:end]))
     mask = mdutil.comment_mask(handle.lines)
     keep = []
     for i in range(start + 1, end):
@@ -184,13 +192,11 @@ def triage_idea_to_story(repo: Repo, epic_id: str, title: str, priority: str = "
         raise ActionError(f"no such epic: {epic_id}")
 
     story_id = repo.allocate_id("US")
-    index = [dict(i) for i in epic.get("stories") or []]
-    index.append({"id": story_id, "title": title,
-                  "state": STORY_STATE_LABEL["Draft"],
-                  "priority": priority or "", "points": "", "assignee": ""})
-    index.sort(key=lambda i: id_rank(i["id"]))
-    epic["stories"] = index
-    repo.file("Epic-Backlog.md").replace(epic["span"], render.render_epic(epic))
+    # One new line under the epic; the epic's other lines are not rewritten.
+    line = render.story_index_line({"id": story_id, "title": title,
+                                    "state": STORY_STATE_LABEL["Draft"],
+                                    "priority": priority or "", "points": "", "assignee": ""})
+    repo.insert_index_line(epic_id, line, story_id)
     repo.bump_next_id("US", story_id)
     _retire_idea(repo, idea_line, became=story_id)
     return {"message": f"{story_id} added to {epic_id} as a Draft",
@@ -209,6 +215,12 @@ def triage_bug(repo: Repo, title: str, severity: str = "minor", priority: str = 
     if not title:
         raise ActionError("a bug needs a title")
     bug_id = repo.allocate_id("BUG")
+    # The report as the reporter wrote it is evidence; a triager's tidier
+    # title and symptom are not a reason to throw it away.
+    reported = next((b["text"] for b in repo.bug_inbox() if b["line"] == inbox_line), "")
+    extra = []
+    if reported and mdutil.words(reported) - mdutil.words(f"{title} {symptom}"):
+        extra = [{"label": "Reported as", "inline": reported, "body": []}]
     bug = {
         "id": bug_id, "title": title, "state": "Triaged",
         "emoji": BUG_STATE_EMOJI["Triaged"],
@@ -220,6 +232,7 @@ def triage_bug(repo: Repo, title: str, severity: str = "minor", priority: str = 
         "relates_to": (relates_to or "").strip().upper(),
         "symptom": symptom or title, "steps": [],
         "expected": "", "actual": "", "assessment": "", "notes": "",
+        "extra_blocks": extra,
     }
     placed = repo.append_to_section(
         "Bugs.md", 2,
@@ -393,11 +406,17 @@ def update_bug(repo: Repo, bug_id: str, **fields) -> dict:
     if "assignee" in fields and fields["assignee"] is not None:
         bug["assignee"] = _at(fields["assignee"])
         changed.append("assignee")
+    # The form sends every field back. A confidence marker only moves when the
+    # text under it does — resaving an unconfirmed reproduction unchanged must
+    # not quietly promote it to "confirmed".
     if "steps" in fields and fields["steps"] is not None:
-        bug["steps"] = [s for s in fields["steps"] if str(s).strip()]
-        bug["steps_confidence"] = "confirmed" if bug["steps"] else None
-        changed.append("steps")
-    if fields.get("assessment"):
+        steps = [s for s in fields["steps"] if str(s).strip()]
+        if [str(s).strip() for s in steps] != [str(s).strip() for s in bug.get("steps") or []]:
+            bug["steps"] = steps
+            bug["steps_confidence"] = "confirmed" if steps else None
+            changed.append("steps")
+    original = (bug.get("_orig") or {}).get("assessment") or ""
+    if fields.get("assessment") and str(fields["assessment"]).strip() != original.strip():
         bug["assessment_confidence"] = "confirmed"
 
     new_state = fields.get("state")
@@ -452,7 +471,7 @@ def _at(name) -> str:
 # Sprint
 # --------------------------------------------------------------------------
 
-def _write_board(repo: Repo, board: dict[str, list[dict]]) -> None:
+def _write_board(repo: Repo, board: dict[str, list[dict]], *, allow: bool = False) -> None:
     handle = repo.file("Sprint.md")
     board_span = mdutil.find_section(handle.lines, 2,
                                      lambda t: t.strip().lower() == "board")
@@ -469,7 +488,7 @@ def _write_board(repo: Repo, board: dict[str, list[dict]]) -> None:
     for idx, name in sorted(columns, reverse=True):
         span = mdutil.section_span(handle.lines, idx)
         _set_section_bullets(handle, span,
-                             [render.board_line(i) for i in board.get(name, [])])
+                             [render.board_line(i) for i in board.get(name, [])], allow=allow)
 
 
 def _set_sprint_field(repo: Repo, label: str, value: str) -> None:
@@ -477,7 +496,7 @@ def _set_sprint_field(repo: Repo, label: str, value: str) -> None:
     pattern = re.compile(r"^\*\*" + re.escape(label) + r":\*\*.*$")
     for i, line in enumerate(handle.lines):
         if pattern.match(line):
-            handle.lines[i] = f"**{label}:** {value}"
+            handle.replace((i, i + 1), [f"**{label}:** {value}"], allow=True)
             return
 
 
@@ -520,7 +539,8 @@ def plan_sprint(repo: Repo, name: str = "", goal: str = "", dates: str = "",
     _set_sprint_field(repo, "Capacity (target points)", capacity or EMPTY)
     board = {col: [] for col in BOARD_COLUMNS}
     board["To Do"] = todo
-    _write_board(repo, board)
+    # Planning builds the board from nothing; what was on it is replaced on purpose.
+    _write_board(repo, board, allow=True)
 
     for item_id in items:
         if item_id in stories and stories[item_id]["state"] != "In Sprint":
@@ -634,32 +654,23 @@ def move_story_to_epic(repo: Repo, story_id: str, epic_id: str, **_) -> dict:
     if all(e["id"] == epic_id for e in holders) and (not story or story.get("parent") == epic_id):
         return {"message": f"{story_id} is already under {epic_id}"}
 
-    # Carry the index line across verbatim when there is no detail entry yet
-    # (a Draft lives only as that line).
+    # The index line moves as written — a Draft lives only as that line, and
+    # any note on it is part of the story. Each epic loses or gains that one
+    # line; nothing else in either is rewritten.
     carried = None
     for epic in holders:
-        carried = carried or next(
-            (dict(i) for i in epic["stories"] if i["id"] == story_id), None)
-
-    handle = repo.file("Epic-Backlog.md")
-    for epic in sorted(holders, key=lambda e: e["span"][0], reverse=True):
         if epic["id"] == epic_id:
             continue
-        epic["stories"] = [i for i in epic["stories"] if i["id"] != story_id]
-        handle.replace(epic["span"], render.render_epic(epic))
+        raw = repo.remove_index_line(epic["id"], story_id)
+        carried = carried or raw
+    target_has = any(i["id"] == story_id for i in (repo._epic(epic_id) or {}).get("stories") or [])
+    if carried and not target_has:
+        repo.insert_index_line(epic_id, carried, story_id)
 
     if story:
         story["parent"] = epic_id
         repo.file("User-Stories.md").replace(story["span"], render.render_story(story))
         repo.sync_epic_index(story)
-    elif carried:
-        fresh = next((e for e in repo.epics() if e["id"] == epic_id), None)
-        index = [dict(i) for i in fresh.get("stories") or []]
-        if not any(i["id"] == story_id for i in index):
-            index.append(carried)
-        index.sort(key=lambda i: id_rank(i["id"]))
-        fresh["stories"] = index
-        repo.file("Epic-Backlog.md").replace(fresh["span"], render.render_epic(fresh))
 
     moved_from = ", ".join(e["id"] for e in holders if e["id"] != epic_id) or "nowhere"
     return {"message": f"{story_id} moved from {moved_from} to {epic_id}",
@@ -760,6 +771,9 @@ def set_blocked(repo: Repo, item_id: str, reason: str = "", blocked: bool = True
     span = mdutil.find_section(handle.lines, 2, lambda t: "blocked" in t.lower())
     if not span:
         raise ActionError("Sprint.md has no '## 🚧 Blocked' section")
+    if previous:
+        # This item's old flag is what the person is replacing or lifting.
+        handle.allow(previous.get("raw") or previous.get("text", ""))
     _set_section_bullets(handle, span, [render.blocked_line(e) for e in entries])
     return {"message": f"{item_id} {'flagged blocked' if blocked else 'unblocked'}"}
 
@@ -861,7 +875,7 @@ def close_sprint(repo: Repo, retro_kept: str = "", retro_try: str = "", **_) -> 
         else:
             set_bug_state(repo, item["id"], "Confirmed")
 
-    _write_board(repo, {col: [] for col in BOARD_COLUMNS})
+    _write_board(repo, {col: [] for col in BOARD_COLUMNS}, allow=True)
     _set_sprint_field(repo, "Sprint", "_none yet_ — run `/plan-sprint` to start one.")
     _set_sprint_field(repo, "Sprint Goal", EMPTY)
     _set_sprint_field(repo, "Dates", EMPTY)
@@ -870,7 +884,7 @@ def close_sprint(repo: Repo, retro_kept: str = "", retro_try: str = "", **_) -> 
     span = mdutil.find_section(repo.file("Sprint.md").lines, 2,
                                lambda t: "blocked" in t.lower())
     if span:
-        _set_section_bullets(repo.file("Sprint.md"), span, [])
+        _set_section_bullets(repo.file("Sprint.md"), span, [], allow=True)
 
     _update_rolling_velocity(repo)
     return {"message": f"Sprint {name} closed — velocity {velocity}, "
@@ -930,7 +944,7 @@ def cut_release(repo: Repo, version: str = "", title: str = "", theme: str = "",
 
     inc_span = mdutil.find_section(handle.lines, 2, lambda t: "increment" in t.lower())
     if inc_span:
-        _set_section_bullets(handle, inc_span, [])
+        _set_section_bullets(handle, inc_span, [], allow=True)
 
     return {"message": f"{version} cut with {len(ids)} item(s)",
             "version": version, "command": f"/release {version}"}
@@ -1007,8 +1021,11 @@ def update_project_config(repo: Repo, values=None, **_) -> dict:
     handle = repo.file("Definitions.md")
     if not handle.exists:
         raise ActionError("this repo folder has no Definitions.md")
+    before = list(handle.lines)
     if not _set_fenced_keys(handle.lines, values):
         return {"message": "Nothing to change"}
+    # The values being set are the ones being replaced, comments included.
+    handle.allow("\n".join(l for l in before if l not in handle.lines))
     return {"message": f"Updated {', '.join(sorted(values))} in Definitions.md",
             "command": "(edit Definitions.md)"}
 
@@ -1235,7 +1252,7 @@ def update_checklist(repo: Repo, which: str = "", items=None, **_) -> dict:
         keep.pop()
 
     body = keep + [""] + [f"- [ ] {item}" for item in items] + [""]
-    handle.replace((start + 1, end), body)
+    handle.replace((start + 1, end), body, allow=True)
     return {"message": f"Definition of {which.title()} updated ({len(items)} items)",
             "command": "(edit Definitions.md)"}
 
@@ -1410,5 +1427,8 @@ def run(repo: Repo, action: str, params: dict) -> dict:
     if action in OUTSIDE_THE_EIGHT:
         return result
     repo.rebuild_overviews()
-    result["files_written"] = repo.save()
+    try:
+        result["files_written"] = repo.save()
+    except LossError as err:
+        raise ActionError(str(err)) from None
     return result

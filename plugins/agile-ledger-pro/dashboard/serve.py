@@ -283,6 +283,9 @@ def main(argv=None) -> int:
     parser.add_argument("--no-browser", action="store_true",
                         help="do not open a browser window")
     parser.add_argument("--verbose", action="store_true", help="log every request")
+    parser.add_argument("--verify", action="store_true",
+                        help="check, without writing anything, that saving from the page "
+                             "would lose no text in this ledger; then exit")
     args = parser.parse_args(argv)
 
     if args.ledger:
@@ -306,6 +309,13 @@ def main(argv=None) -> int:
                   "       If you have no ledger yet, run /init-ledger in Claude Code.",
                   file=sys.stderr)
             return 2
+
+    if args.verify:
+        from agileledger import verify
+        ok, report = verify.verify(root)
+        print(f"Agile-Ledger Pro — write-safety check of {root} (read-only)\n")
+        print("\n".join(report))
+        return 0 if ok else 1
 
     repos = [r["slug"] for r in resolve.list_repos(root)]
     try:

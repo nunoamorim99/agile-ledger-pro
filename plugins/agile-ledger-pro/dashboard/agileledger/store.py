@@ -14,12 +14,21 @@ from __future__ import annotations
 
 import os
 import re
+from collections import Counter
 import tempfile
 from pathlib import Path
 
 from . import mdutil, parse, render, resolve
 from .mdutil import split_lines
 from .model import LEDGER_FILES, EMPTY, id_rank
+
+
+class LossError(Exception):
+    """A save that would delete text nobody asked to change. Nothing is written."""
+
+
+def _public(entry: dict) -> dict:
+    return {k: v for k, v in entry.items() if not k.startswith("_")}
 
 
 class LedgerFile:
@@ -30,13 +39,31 @@ class LedgerFile:
         self.exists = path.is_file()
         self.lines = split_lines(path.read_text(encoding="utf-8")) if self.exists else []
         self._original = list(self.lines)
+        #: Words an action said it meant to replace — the old value of a field
+        #: it edited, a derived table it rebuilt. The no-loss guard allows
+        #: these to disappear and nothing else.
+        self.allowed: Counter = Counter()
 
     @property
     def dirty(self) -> bool:
         return self.lines != self._original
 
-    def replace(self, span: tuple[int, int], new_lines: list[str]) -> None:
+    def allow(self, text: str) -> None:
+        self.allowed.update(mdutil.words(text))
+
+    def replace(self, span: tuple[int, int], new_lines: list[str], *, allow: bool = False) -> None:
+        """Splice ``new_lines`` over ``span``.
+
+        ``allow=True`` says the old lines are derived or explicitly replaced, so
+        their words may go. A patched entry carries the exact text it replaced
+        (`render.Lines.replaced`), and only that is allowed.
+        """
         start, end = span
+        if allow:
+            self.allow("\n".join(self.lines[start:end]))
+        replaced = getattr(new_lines, "replaced", None)
+        if replaced:
+            self.allow(replaced)
         self.lines[start:end] = list(new_lines)
 
     def insert(self, at: int, new_lines: list[str]) -> None:
@@ -46,6 +73,7 @@ class LedgerFile:
         """Write atomically. Returns True when something was actually written."""
         if not self.dirty:
             return False
+        self.allowed = Counter()
         text = "\n".join(self.lines)
         if not text.endswith("\n"):
             text += "\n"
@@ -141,9 +169,11 @@ class Repo:
             "ideas": self.ideas(),
             "triaged_ideas": self.triaged_ideas(),
             "epics": epics,
-            "stories": stories,
+            # The writer's bookkeeping (the entry as written, its values as
+            # read) is for the server, not the page.
+            "stories": [_public(s) for s in stories],
             "bug_inbox": self.bug_inbox(),
-            "bugs": bugs,
+            "bugs": [_public(b) for b in bugs],
             "sprint": sprint,
             "history": self.history(),
             "releases": self.releases(),
@@ -273,7 +303,7 @@ class Repo:
         start, end = span
         table = mdutil.find_table(handle.lines, start, end)
         if table:
-            handle.replace(table, new_lines)
+            handle.replace(table, new_lines, allow=True)
         else:
             handle.insert(mdutil.trim_span(handle.lines, start, end)[1], [""] + new_lines)
 
@@ -307,7 +337,7 @@ class Repo:
                 while run < limit and handle.lines[run].strip() and \
                         not handle.lines[run].lstrip().startswith("_"):
                     run += 1
-            handle.replace((i, run), new_lines)
+            handle.replace((i, run), new_lines, allow=True)
             return
         at = start + 1
         while at < limit and not handle.lines[at].strip():
@@ -333,59 +363,166 @@ class Repo:
             tail_predicate=lambda l: l.strip().lower().startswith("open by priority"))
         self._replace_table("Bugs.md", render.bug_table(bugs))
 
-    def _rebuild_epic_overview(self) -> None:
-        stories = {s["id"]: s for s in self.stories()}
-        epics = self.epics()
-        handle = self.file("Epic-Backlog.md")
+    @staticmethod
+    def _epic_state(epic: dict) -> str:
+        """Derived from the children — except where the children say nothing.
 
-        # Recompute each epic's derived status and rollup, in place, bottom-up so
-        # earlier spans stay valid while later ones are replaced.
-        for epic in sorted(epics, key=lambda e: e["span"][0], reverse=True):
-            epic["rollup"] = render.epic_rollup(epic, stories)
-            epic["state"] = render.derive_epic_state(epic)
-            epic["emoji"] = render.EPIC_STATE_EMOJI[epic["state"]]
-            handle.replace(epic["span"], render.render_epic(epic))
+        An epic with no stories yet, or one a person paused or discarded whose
+        stories are merely Ready, keeps the state somebody gave it: deriving
+        "Proposed" there would undo a decision, not compute a fact.
+        """
+        current = epic.get("state") or render.epic_state_from_emoji(epic.get("emoji", ""))
+        if not epic.get("stories"):
+            return current
+        derived = render.derive_epic_state(epic)
+        if current in ("Paused", "Discarded") and derived == "Proposed":
+            return current
+        return derived
+
+    def _rebuild_epic_overview(self) -> None:
+        """Re-derive each epic's state and rollups — on its title line only.
+
+        This used to re-render every epic block after every action, which
+        rewrote the goal and notes of epics nobody touched in their summary
+        shape, losing whatever did not fit it. Now the one derived line is
+        recomputed and written back only when a value on it actually moved.
+        """
+        stories = {s["id"]: s for s in self.stories()}
+        handle = self.file("Epic-Backlog.md")
+        for epic in self.epics():
+            at = epic.get("title_at")
+            if at is None:
+                continue
+            line = handle.lines[at]
+            as_read = render.epic_title_line(epic, line)
+            fresh = dict(epic)
+            fresh["rollup"] = render.epic_rollup(epic, stories)
+            fresh["state"] = self._epic_state(epic)
+            fresh["emoji"] = render.EPIC_STATE_EMOJI[fresh["state"]]
+            updated = render.epic_title_line(fresh, line)
+            if updated != as_read:
+                handle.replace((at, at + 1), [updated], allow=True)
 
         refreshed = self.epics()
         by_id = {s["id"]: s for s in self.stories()}
         for epic in refreshed:
             epic["rollup"] = render.epic_rollup(epic, by_id)
-            epic["state"] = render.derive_epic_state(epic)
+            epic["state"] = self._epic_state(epic)
         self._replace_table("Epic-Backlog.md", render.epic_table(refreshed))
 
+    # -- epic index lines --------------------------------------------------
+
+    def _epic(self, epic_id: str) -> dict | None:
+        return next((e for e in self.epics() if e["id"] == epic_id), None)
+
+    def insert_index_line(self, epic_id: str, line: str, item_id: str) -> bool:
+        """Put one index line under an epic's ``**Stories:**``, in ID order.
+
+        Only that line is added; the epic's other lines are not rewritten. An
+        epic with no Stories block yet gets one at its end.
+        """
+        epic = self._epic(epic_id)
+        if not epic:
+            return False
+        handle = self.file("Epic-Backlog.md")
+        index = epic.get("stories") or []
+        if index:
+            later = [i for i in index if id_rank(i["id"]) > id_rank(item_id)]
+            at = later[0]["line"] if later else index[-1]["line"] + 1
+            handle.insert(at, [line])
+            return True
+        if epic.get("stories_at"):
+            start, end = epic["stories_at"]
+            at = start + 1
+            while at < end and not handle.lines[at].strip():
+                at += 1
+            if at >= end or at == start + 1:
+                handle.insert(start + 1, ["", line])
+            else:
+                handle.insert(at, [line])
+            return True
+        end = epic["span"][1]
+        handle.insert(end, ["", "**Stories:**", "", line])
+        return True
+
+    def remove_index_line(self, epic_id: str, item_id: str) -> str | None:
+        """Take one story's index line out of an epic, returning it as written."""
+        epic = self._epic(epic_id)
+        item = next((i for i in (epic or {}).get("stories") or [] if i["id"] == item_id), None)
+        if not item:
+            return None
+        handle = self.file("Epic-Backlog.md")
+        raw = handle.lines[item["line"]]
+        handle.replace((item["line"], item["line"] + 1), [])
+        return raw
+
     def sync_epic_index(self, story: dict) -> None:
-        """Mirror a story's coarse state onto its epic's index line."""
+        """Mirror a story's coarse state onto its epic's index line — that line only.
+
+        Values the story does not change keep the line's own words: a state
+        reading "✅ Delivered in v1.2" stays so while the story stays
+        Delivered, and a note after the assignee rides along.
+        """
         if not story.get("parent"):
             return
         from .model import STORY_STATE_LABEL
-        handle = self.file("Epic-Backlog.md")
-        for epic in self.epics():
-            if epic["id"] != story["parent"]:
-                continue
-            index = [dict(i) for i in epic.get("stories") or []]
-            row = {
-                "id": story["id"],
-                "title": story.get("title", ""),
-                "state": STORY_STATE_LABEL.get(story.get("state", "Ready"), ""),
-                "priority": story.get("priority", ""),
-                "points": story.get("estimate", ""),
-                "assignee": story.get("assignee", ""),
-            }
-            for n, item in enumerate(index):
-                if item["id"] == story["id"]:
-                    index[n] = row
-                    break
-            else:
-                index.append(row)
-            index.sort(key=lambda i: id_rank(i["id"]))
-            epic["stories"] = index
-            epic["rollup"] = render.epic_rollup(epic, {story["id"]: story})
-            handle.replace(epic["span"], render.render_epic(epic))
+        epic = self._epic(story["parent"])
+        if not epic:
             return
+        handle = self.file("Epic-Backlog.md")
+        label = STORY_STATE_LABEL.get(story.get("state", "Ready"), "")
+        old = next((i for i in epic.get("stories") or [] if i["id"] == story["id"]), None)
+        row = dict(old or {"id": story["id"], "extra": [], "assignee_note": ""})
+        row["title"] = story.get("title") or row.get("title", "")
+        if not (old and label and label in (old.get("state") or "")):
+            row["state"] = label
+        row["priority"] = story.get("priority", "")
+        row["points"] = story.get("estimate", "")
+        row["assignee"] = story.get("assignee", "")
+        line = render.story_index_line(row)
+        if old is None:
+            self.insert_index_line(epic["id"], line, story["id"])
+            return
+        same = all(render._norm(row.get(k)) == render._norm(old.get(k))
+                   for k in ("title", "state", "priority", "points", "assignee"))
+        if same:
+            return
+        prefix = re.match(r"^(\s*[-*]\s+)", old["raw"])
+        line = (prefix.group(1) if prefix else "- ") + line[2:]
+        handle.replace((old["line"], old["line"] + 1), [line], allow=True)
 
     # -- saving ------------------------------------------------------------
 
+    def lost_words(self) -> Counter:
+        """Words the eight files held before this action and would not hold after.
+
+        Taken across all eight together, so text that moves — a story changing
+        section, an Increment line rolling into a version — is not a loss. What
+        an action declared it was replacing (`LedgerFile.allowed`) is not either.
+        Anything else is a sentence somebody wrote that the save would delete.
+        """
+        before, after, allowed = Counter(), Counter(), Counter()
+        for handle in self.files.values():
+            if not handle.dirty:
+                continue
+            before.update(mdutil.words("\n".join(handle._original)))
+            after.update(mdutil.words("\n".join(handle.lines)))
+            allowed.update(handle.allowed)
+        return (before - after) - allowed
+
     def save(self) -> list[str]:
+        """Write every changed file — or none, if that would delete text.
+
+        The guard runs before the first byte is written, so a refused save
+        leaves the ledger exactly as it was.
+        """
+        lost = self.lost_words()
+        if lost:
+            sample = ", ".join(sorted(lost)[:12]) + (" …" if len(lost) > 12 else "")
+            raise LossError(
+                "Nothing was saved: this change would have deleted text the dashboard "
+                f"does not edit ({sample}). Make it with Claude or in the file instead, "
+                "and please report it — the dashboard should never drop a word.")
         written = []
         for name, handle in self.files.items():
             if handle.save():

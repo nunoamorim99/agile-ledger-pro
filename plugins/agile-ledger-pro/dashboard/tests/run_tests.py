@@ -170,8 +170,13 @@ def test_entries_round_trip():
 
         for epic in repo.epics():
             back = parse.parse_epics(["## Epics", ""] + render.render_epic(epic))
-            for key in ("id", "title", "target", "goal", "area", "created", "history", "stories"):
+            for key in ("id", "title", "target", "goal", "area", "created", "history"):
                 equal(back[0][key], epic[key], f"{epic['id']}.{key} round-trip")
+            # Index items also carry where they sit, which differs between files.
+            where = ("line", "raw")
+            equal([{k: v for k, v in i.items() if k not in where} for i in back[0]["stories"]],
+                  [{k: v for k, v in i.items() if k not in where} for i in epic["stories"]],
+                  f"{epic['id']}.stories round-trip")
 
 
 def test_rerender_is_byte_identical():
@@ -1942,6 +1947,375 @@ def test_templates_agree_with_the_model():
     check("clears the line" not in ideas, "and no longer says the line is cleared")
     equal(parse.parse_triaged_ideas(mdutil.split_lines(ideas)), [],
           "its example rows are comments, so they parse as nothing")
+
+
+# --------------------------------------------------------------------------
+# No write may delete text it did not mean to change
+# --------------------------------------------------------------------------
+#
+# A field report from an org ledger: saving rewrote each entry from the
+# model, so a criterion wrapped over two lines kept its first line, the reason
+# after a Dependencies link went, and every epic's goal and notes were
+# re-rendered after every action — 466 of 526 entries would have lost text.
+# These entries are written the way people write when no tool is watching.
+
+MESSY_STORY = """#### US-006
+
+**Offline drafts** 💡  ·  Parent: [EPIC-001](Epic-Backlog.md#epic-001)
+
+- **Priority:** 🟡
+- **Estimate:** 5
+- **Area:** editor
+- **Layer:** frontend
+- **Assignee:** —
+- **Branch:** us-006-offline
+
+**Story** — As a writer on a train, I want my drafts saved locally, so that a dropped
+connection never costs me a paragraph.
+
+**Acceptance criteria** _(Given / When / Then)_
+
+- Given I am offline, when I type, then every keystroke is kept in local storage
+  and survives a page reload.
+- Given I come back online, when the sync runs, then the server copy wins only if
+  it is newer — otherwise mine is uploaded.
+  - and a toast says which copy was kept
+- Given two tabs, when both edit, then the last write wins.
+
+Edge cases we argued about: Safari private mode drops storage.
+
+**Dependencies:** [US-003](User-Stories.md#us-003) — the magic link must land first, because the draft key is the session
+
+**Notes:** Ruben prototyped this in March.
+Spike notes live in the wiki.
+"""
+
+PARKED = """#### US-007
+
+**Dark mode** ❄️  ·  Parent: [EPIC-001](Epic-Backlog.md#epic-001)
+
+- **Status:** Paused (2026-02-01)
+- **Reason:** design system first
+
+**Notes:** —
+
+#### US-008
+
+**Fax export** 🗑️  ·  Parent: [EPIC-001](Epic-Backlog.md#epic-001)
+
+- **Status:** Discarded (2026-02-02)
+- **Reason:** nobody has a fax
+
+**Notes:** —
+"""
+
+MESSY_EPIC = """### EPIC-003
+
+**Offline mode** 💡  ·  target v4.0 · 0/0 stories · 0/0 pts
+
+**Goal:** a writer never loses work to a dropped connection —
+not on a train, not in a tunnel, not on hotel wifi.
+
+**Area:** editor
+
+**Notes:** split from EPIC-001 after the March review; Marta owns the rollout plan.
+The spike lives in the wiki.
+
+**History:**
+
+**Stories:**
+"""
+
+PAUSED_EPIC = """### EPIC-004
+
+**Kiosk mode** ❄️  ·  target — · 0/0 stories · 0/0 pts
+
+**Goal:** a locked-down view for shared screens in stores.
+
+**Area:** retail
+
+**History:**
+
+**Stories:**
+"""
+
+MESSY_BUG = """### BUG-004
+
+**Draft lost on reconnect** 🔍
+
+- **Severity:** major
+- **Priority:** 🔴
+- **State:** Triaged
+- **Estimate:** —
+- **Reported by:** Marta (2026-03-02)
+- **Area:** editor
+- **Assignee:** —
+
+**Symptom** — after the wifi drops and comes back, the last paragraph is gone.
+
+**Steps to reproduce** _(unconfirmed — needs input)_
+
+1. Open a draft and type a paragraph, then turn the wifi off
+   while the save spinner is still showing.
+2. Turn it back on.
+
+**Expected:** the paragraph is still there.
+
+**Actual:** the editor reloads from the server copy.
+
+**Assessment** _(pending /find-bug)_
+
+**Notes:** happens on the train every morning, per Marta.
+"""
+
+
+def _messy(led) -> None:
+    """Plant the hand-written shapes into the fixture copy."""
+    d = led.root / "demo-app"
+    us = (d / "User-Stories.md").read_text(encoding="utf-8")
+    us = us.replace("#### US-003\n", MESSY_STORY + "\n#### US-003\n", 1)
+    us = us.replace("_Deferred or rejected, kept with their reason._\n",
+                    "_Deferred or rejected, kept with their reason._\n\n" + PARKED, 1)
+    (d / "User-Stories.md").write_text(us, encoding="utf-8")
+
+    eb = (d / "Epic-Backlog.md").read_text(encoding="utf-8")
+    eb = eb.replace(
+        "- [US-004](User-Stories.md#us-004) · Guided setup checklist · 📝 Draft · 🟢\n",
+        "- [US-004](User-Stories.md#us-004) · Guided setup checklist · 📝 Draft · 🟢 · Ruben — ready after the API lands\n"
+        "- [US-006](User-Stories.md#us-006) · Offline drafts · ✅ Ready · 🟡 · 5 pts\n"
+        "- [US-007](User-Stories.md#us-007) · Dark mode · ❄️ Paused\n"
+        "- [US-008](User-Stories.md#us-008) · Fax export · 🗑️ Discarded\n", 1)
+    eb = eb.replace("### EPIC-002\n", MESSY_EPIC + "\n### EPIC-002\n", 1)
+    eb = eb.replace("**Area:** onboarding\n",
+                    "**Area:** onboarding\n\n**Notes:** onboarding research lives in Dovetail;\n"
+                    "ask Marta for access.\n", 1)
+    eb = eb.replace("_Epics deferred or rejected, kept with their reason._\n",
+                    "_Epics deferred or rejected, kept with their reason._\n\n" + PAUSED_EPIC, 1)
+    eb = eb.replace("EPIC: EPIC-003 · US: US-006", "EPIC: EPIC-005 · US: US-009")
+    (d / "Epic-Backlog.md").write_text(eb, encoding="utf-8")
+
+    sprint = (d / "Sprint.md").read_text(encoding="utf-8")
+    sprint = sprint.replace("Google SSO login · 5 pts · @rita",
+                            "Google SSO login · 5 pts · @rita · pairing with Marta", 1)
+    (d / "Sprint.md").write_text(sprint, encoding="utf-8")
+
+    bugs = (d / "Bugs.md").read_text(encoding="utf-8")
+    bugs = bugs.replace("### BUG-001\n", MESSY_BUG + "\n### BUG-001\n", 1)
+    (d / "Bugs.md").write_text(bugs, encoding="utf-8")
+
+
+#: Phrases that only exist in the hand-written parts above. Each must still be
+#: in the ledger after every action, whatever the action was.
+MESSY_PHRASES = [
+    "and survives a page reload.",
+    "it is newer — otherwise mine is uploaded.",
+    "  - and a toast says which copy was kept",
+    "Edge cases we argued about: Safari private mode drops storage.",
+    "— the magic link must land first, because the draft key is the session",
+    "Spike notes live in the wiki.",
+    "- **Branch:** us-006-offline",
+    "connection never costs me a paragraph.",
+    "not on a train, not in a tunnel, not on hotel wifi.",
+    "Marta owns the rollout plan.",
+    "The spike lives in the wiki.",
+    "Ruben — ready after the API lands",
+    "   while the save spinner is still showing.",
+    "happens on the train every morning, per Marta.",
+    "a locked-down view for shared screens in stores.",
+    "ask Marta for access.",
+    "pairing with Marta",
+]
+
+
+def _entry_diff(before: str, after: str) -> tuple[list[str], list[str]]:
+    """Lines removed and added, outside the derived overview (tables, roll-ups)."""
+    import difflib
+
+    def body(text):
+        lines = text.splitlines()
+        cut = next((i for i, l in enumerate(lines) if l.startswith("## ")
+                    and "overview" not in l.lower()), 0)
+        return lines[cut:]
+    gone, came = [], []
+    for line in difflib.ndiff(body(before), body(after)):
+        if line.startswith("- "):
+            gone.append(line[2:])
+        elif line.startswith("+ "):
+            came.append(line[2:])
+    return gone, came
+
+
+def _ledger_text(led) -> str:
+    d = led.root / "demo-app"
+    return "\n".join((d / n).read_text(encoding="utf-8") for n in LEDGER_FILES)
+
+
+def test_hand_written_text_survives_every_action():
+    with Ledger() as led:
+        _messy(led)
+        story_us = led.repo().stories()
+        stories = {s["id"]: s for s in story_us}
+        check("US-006" in stories, "the messy story parses")
+        s6 = stories["US-006"]
+        equal(len(s6["criteria"]), 3, "a criterion wrapped over lines is one criterion")
+        check(s6["criteria"][0].endswith("survives a page reload."),
+              "and it is read whole, not as its first line")
+
+        def survives(label):
+            text = _ledger_text(led)
+            gone = [p for p in MESSY_PHRASES if p not in text]
+            check(not gone, f"{label}: nothing hand-written lost (missing: {gone})")
+
+        # The edit form sends every field back, changed or not — as the page does.
+        def form(story_id, **changes):
+            s = next(x for x in led.repo().stories() if x["id"] == story_id)
+            data = {"story_id": story_id, "title": s["title"], "story": s["story"],
+                    "criteria": s["criteria"], "priority": s["priority"],
+                    "estimate": s["estimate"], "area": s["area"], "layer": s["layer"],
+                    "assignee": s["assignee"], "dependencies": s["dependencies"],
+                    "notes": s["notes"]}
+            data.update(changes)
+            return led.run("update_story", **data)
+
+        led.run("check")
+        before = (led.root / "demo-app" / "User-Stories.md").read_text(encoding="utf-8")
+        form("US-006", estimate="8")
+        after = (led.root / "demo-app" / "User-Stories.md").read_text(encoding="utf-8")
+        equal(_entry_diff(before, after), (["- **Estimate:** 5"], ["- **Estimate:** 8"]),
+              "an estimate edit through the form changes the estimate line and nothing else")
+        survives("edit estimate")
+
+        led.run("add_idea", text="nightly export to S3")
+        survives("add idea")
+        eb_lines = (led.root / "demo-app" / "Epic-Backlog.md").read_text(encoding="utf-8")
+        check(MESSY_EPIC.split("\n**Area:**")[0].split("\n", 3)[3] in eb_lines,
+              "an epic's goal is not re-rendered by an unrelated action")
+
+        form("US-006", criteria=s6["criteria"] + ["Given a full disk, when I save, then I am warned."])
+        survives("add a criterion")
+
+        led.run("pull_into_sprint", items=["US-006"])
+        survives("pull into sprint")
+        led.run("move_board_item", item_id="US-006", column="In Progress")
+        survives("start")
+        led.run("set_blocked", item_id="US-006", reason="waiting on the sync API", blocked=True)
+        led.run("set_blocked", item_id="US-006", blocked=False)
+        survives("block and unblock")
+        led.run("complete_item", item_id="US-006", pr="#99")
+        survives("complete")
+        done = next(s for s in led.repo().stories() if s["id"] == "US-006")
+        equal(done["state"], "Delivered", "US-006 delivered")
+        check(done["criteria_met"] and len(done["criteria"]) == 4,
+              "a delivered story keeps its criteria under 'all met'")
+
+        led.run("set_story_state", story_id="US-003", state="Paused", reason="waiting on vendor")
+        paused = next(s for s in led.repo().stories() if s["id"] == "US-003")
+        equal(paused["estimate"], "3", "pausing a story keeps its estimate")
+        led.run("set_story_state", story_id="US-003", state="Ready")
+        back = next(s for s in led.repo().stories() if s["id"] == "US-003")
+        equal(back["state"], "Ready", "and it comes back Ready")
+        check("Status" not in "\n".join(back["_raw"]), "without a stale Paused status")
+        survives("pause and resume")
+
+        bug = next(b for b in led.repo().bugs() if b["id"] == "BUG-004")
+        equal(len(bug["steps"]), 2, "a wrapped step is one step")
+        before = (led.root / "demo-app" / "Bugs.md").read_text(encoding="utf-8")
+        led.run("update_bug", bug_id="BUG-004", title=bug["title"], severity=bug["severity"],
+                priority=bug["priority"], estimate="2", area=bug["area"], symptom=bug["symptom"],
+                expected=bug["expected"], actual=bug["actual"], assessment=bug["assessment"],
+                notes=bug["notes"], relates_to=bug["relates_to"], steps=bug["steps"])
+        after = (led.root / "demo-app" / "Bugs.md").read_text(encoding="utf-8")
+        check("_(unconfirmed — needs input)_" in after,
+              "resaving unchanged steps does not promote them to confirmed")
+        equal(_entry_diff(before, after), (["- **Estimate:** —"], ["- **Estimate:** 2"]),
+              "a bug edit through the form changes one line")
+        led.run("move_story_to_epic", story_id="US-004", epic_id="EPIC-003")
+        survives("move a draft to another epic")
+        moved = next(e for e in led.repo().epics() if e["id"] == "EPIC-003")
+        check(any(i["id"] == "US-004" and i["extra"] == ["Ruben — ready after the API lands"]
+                  for i in moved["stories"]), "the moved index line keeps its note")
+        led.run("check")
+        survives("check")
+
+
+def test_the_three_misreads_are_read_right():
+    with Ledger() as led:
+        _messy(led)
+        repo = led.repo()
+        states = {s["id"]: s["state"] for s in repo.stories()}
+        equal(states.get("US-007"), "Paused", "❄️ in the combined section is Paused")
+        equal(states.get("US-008"), "Discarded", "🗑️ in the combined section is Discarded")
+
+        epic1 = next(e for e in repo.epics() if e["id"] == "EPIC-001")
+        us4 = next(i for i in epic1["stories"] if i["id"] == "US-004")
+        check("Draft" in us4["state"], "a note mentioning 'ready' does not become the state",)
+        equal(us4["extra"], ["Ruben — ready after the API lands"], "the note is kept as a note")
+        title = parse.parse_index_line("[US-009](x) · Ready-made templates · 📝 Draft")
+        equal((title["title"], title["state"]), ("Ready-made templates", "📝 Draft"),
+              "a title that starts with a state word is still the title")
+
+        ids = [e["id"] for e in repo.epics()]
+        check("EPIC-004" in ids, "an epic outside '## Epics' is seen")
+        paused = next(e for e in repo.epics() if e["id"] == "EPIC-004")
+        equal(paused["state"], "Paused", "and keeps the state a person gave it")
+        led.run("add_idea", text="x")
+        paused = next(e for e in led.repo().epics() if e["id"] == "EPIC-004")
+        equal(paused["state"], "Paused", "a rebuild does not re-derive a storyless epic to Proposed")
+        issues = led.run("check")["issues"]
+        check(not any("US-007" in i or "US-008" in i or "EPIC-004" in i for i in issues),
+              f"/ledger-check has nothing to say about them ({issues})")
+
+
+def test_a_lossy_write_is_refused_and_nothing_is_saved():
+    with Ledger() as led:
+        _messy(led)
+        on_disk = _ledger_text(led)
+        repo = led.repo()
+        story = next(s for s in repo.stories() if s["id"] == "US-006")
+        # The old bug, on purpose: write the entry from the model alone.
+        bare = {k: v for k, v in story.items() if not k.startswith("_")}
+        repo.file("User-Stories.md").replace(story["span"], render.render_story(bare))
+        try:
+            repo.save()
+            check(False, "a save that drops text must be refused")
+        except Exception as err:
+            check(type(err).__name__ == "LossError", f"refused with LossError ({err!r})")
+            check("Nothing was saved" in str(err), "and says nothing was saved")
+        equal(_ledger_text(led), on_disk, "the ledger on disk is untouched")
+
+
+def test_verify_proves_a_ledger_safe_without_writing():
+    from agileledger import verify
+    with Ledger() as led:
+        _messy(led)
+        on_disk = _ledger_text(led)
+        ok, report = verify.verify(led.root)
+        check(ok, f"the messy ledger verifies safe ({report})")
+        check(any("demo-app" in l and "stories" in l for l in report), "the report names the project")
+        equal(_ledger_text(led), on_disk, "verifying writes nothing")
+
+        # And it is not a rubber stamp: with the old writer back, it says so.
+        patched = render._patch_story
+        render._patch_story = lambda s: render.render_story({k: v for k, v in s.items()
+                                                             if not k.startswith("_")})
+        try:
+            ok, report = verify.verify(led.root)
+        finally:
+            render._patch_story = patched
+        check(not ok and any("US-006" in l for l in report),
+              f"a writer that drops text fails verification and names the entry ({report})")
+
+
+def test_untouched_entries_come_back_byte_for_byte():
+    with Ledger() as led:
+        _messy(led)
+        repo = led.repo()
+        for story in sorted(repo.stories(), key=lambda s: -s["span"][0]):
+            repo.file("User-Stories.md").replace(story["span"], render.render_story(story))
+        for bug in sorted(repo.bugs(), key=lambda b: -b["span"][0]):
+            repo.file("Bugs.md").replace(bug["span"], render.render_bug(bug))
+        for name in ("User-Stories.md", "Bugs.md"):
+            check(not repo.file(name).dirty, f"{name}: re-rendering unchanged messy entries is a no-op")
 
 
 def main() -> int:

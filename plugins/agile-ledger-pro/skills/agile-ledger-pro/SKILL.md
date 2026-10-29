@@ -49,6 +49,17 @@ language matches ("new story", "let's plan the sprint", "what merged to main"), 
   and state the resolution in one line (`Ledger: ~/Projetos/agile-ledger → repo-a`). Never guess a path.
 - **Never delete.** Nothing is removed — delivered, paused, and discarded items are kept forever;
   discarded items keep *why* they were rejected.
+- **Edit the lines a change owns; never re-write an entry.** Changing a story's estimate changes the
+  `Estimate:` line and nothing else. Never regenerate an existing entry from the template: a
+  criterion wrapped over two lines, the reason written after a `Dependencies:` link, a field or block
+  the template has no name for — all of it is the team's text and must survive. Delivering a story
+  keeps its criteria listed under `all met ✓`; pausing one keeps its estimate and priority. An epic's
+  goal and notes are never touched by a story change — only its index line and its derived title line.
+- **Read state from the entry, not only the heading.** In a combined `## ❄️ Paused / 🗑️ Discarded`
+  section, an entry's `Status:` field (else its title emoji) says which it is. An epic is any
+  `### EPIC-nnn` in `Epic-Backlog.md`, inside `## Epics` or not. On an epic index line, only a part
+  that *opens* with a state (`✅ Delivered`, `❄️ Paused`) is the state; a note such as
+  `Ruben — ready after the API lands` is a note.
 - **State = physical position, moved only by a command.** A status change is a move between sections
   or board columns, never a silent emoji swap.
 - **Recompute IDs; never reuse.** On every registration, scan all files for the highest existing ID
@@ -510,7 +521,10 @@ listed here because they gate everything else.
   nothing deleted, no ID reused, derived tables rebuilt from the entries, and only the lines an edit
   owns rewritten. It never runs git in a code repo, so `/sync-main`, `/workspace-sync`,
   `/discover-repos` and the setup commands stay in this session. Python 3.8+, standard library only,
-  bound to `127.0.0.1`. The server lives in the plugin at `dashboard/serve.py`.
+  bound to `127.0.0.1`. The server lives in the plugin at `dashboard/serve.py`. Every save is checked
+  first: if it would delete a word the action did not mean to replace, nothing is written and the page
+  says so. `serve.py --verify` runs that check over the whole ledger without writing — run it once on
+  a ledger written by hand or by an older version before using the page's write actions on it.
 - **`/status`** — The whole picture: counts by shaping state and board column, current sprint progress,
   velocity trend, blocked items, **open bugs by severity/priority**, Increment (unreleased) contents,
   latest version.

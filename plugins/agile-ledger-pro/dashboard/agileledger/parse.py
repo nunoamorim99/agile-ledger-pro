@@ -18,6 +18,9 @@ from . import mdutil
 from .mdutil import EMPTY, bullets, clean, comment_mask, split_lines, strip_links
 
 ID_RE = re.compile(r"^(EPIC|US|BUG|TASK)-\d+$", re.IGNORECASE)
+# An entry heading is the bare ID, or the ID followed by a separator and some
+# words (``### EPIC-008 — Offline mode``) — hand-written ledgers do both.
+_ID_HEAD = re.compile(r"^((?:EPIC|US|BUG|TASK)-\d+)(?:\s*(?:[—·:|-]|\s)\s*(.*))?$", re.IGNORECASE)
 _NEXT_ID = re.compile(r"([A-Z]+):\s*([A-Z]+-\d+)")
 # The label's colon may sit inside the bold markers (`**Goal:**`) or outside
 # them (`**Story**:`), and some labels carry none at all (`**Story** — ...`).
@@ -145,12 +148,12 @@ def _entries(lines: list[str], start: int, end: int, level: int) -> list[dict]:
     for i in range(start, min(end, len(lines))):
         if mask[i] or mdutil.heading_level(lines[i]) != level:
             continue
-        text = mdutil.heading_text(lines[i]).strip()
-        if ID_RE.match(text):
-            found.append((i, text.upper()))
+        m = _ID_HEAD.match(mdutil.heading_text(lines[i]).strip())
+        if m:
+            found.append((i, m.group(1).upper(), (m.group(2) or "").strip()))
 
     out = []
-    for n, (idx, item_id) in enumerate(found):
+    for n, (idx, item_id, rest) in enumerate(found):
         stop = found[n + 1][0] if n + 1 < len(found) else end
         # An entry also stops at any heading shallower than its own.
         for j in range(idx + 1, stop):
@@ -159,8 +162,15 @@ def _entries(lines: list[str], start: int, end: int, level: int) -> list[dict]:
                 stop = j
                 break
         span = mdutil.trim_span(lines, idx, stop)
-        out.append({"id": item_id, "span": span, "body": lines[idx + 1:span[1]]})
+        out.append({"id": item_id, "span": span, "body": lines[idx + 1:span[1]],
+                    "heading_title": rest, "raw": lines[span[0]:span[1]]})
     return out
+
+
+def _snapshot(entry: dict, keys) -> dict:
+    """The modelled values as read, so a writer can tell what an action changed."""
+    import copy
+    return {k: copy.deepcopy(entry.get(k)) for k in keys}
 
 
 # --------------------------------------------------------------------------
@@ -246,14 +256,73 @@ def parse_next_ids(lines: list[str]) -> dict[str, str]:
     return out
 
 
+_STATE_WORDS = ("Draft", "Ready", "In Sprint", "Delivered", "Paused", "Discarded")
+# A state part *opens* with its word, after an optional emoji: "✅ Delivered",
+# "❄️ Paused since v2". A free-text note that merely contains one
+# ("Ruben — ready after the API lands") is not a state, and neither is a title
+# that starts with one ("Ready-made templates"): without the emoji, only the
+# bare word counts.
+_STATE_PART = re.compile(r"^(?:[^\w\s]+\s*(?:" + "|".join(_STATE_WORDS) + r")\b.*|(?:"
+                         + "|".join(_STATE_WORDS) + r"))$", re.IGNORECASE)
+
+
+def parse_index_line(raw: str) -> dict | None:
+    """One ``- US-012 · Title · ✅ Delivered · 🔴 · 5 pts · @rita`` line, or None.
+
+    Every part the line carries that is not one of the known fields is kept in
+    ``extra`` (and a note written after the assignee, ``@rita — back Monday``,
+    in ``assignee_note``) so a line rewritten for a state change still says
+    everything it said before.
+    """
+    parts = [p.strip() for p in raw.split(mdutil.MIDDOT)]
+    sid = strip_links(parts[0]).strip() if parts else ""
+    if not ID_RE.match(sid):
+        return None
+    item = {"id": sid.upper(), "title": "", "state": "", "priority": "",
+            "points": "", "assignee": "", "assignee_note": "", "extra": [],
+            "id_part": parts[0]}
+    for part in parts[1:]:
+        if not part:
+            continue
+        if part.startswith("@") and not item["assignee"]:
+            name, sep, note = part.partition(mdutil.DASH)
+            item["assignee"] = name.strip()
+            item["assignee_note"] = note.strip() if sep else ""
+        elif not item["points"] and re.fullmatch(r"\d+\s*pts?", part):
+            item["points"] = re.sub(r"\s*pts?$", "", part)
+        elif not item["priority"] and part in ("\U0001f534", "\U0001f7e1", "\U0001f7e2"):
+            item["priority"] = part
+        elif not item["state"] and _STATE_PART.match(part):
+            item["state"] = part
+        elif not item["title"]:
+            item["title"] = part
+        else:
+            item["extra"].append(part)
+    return item
+
+
 def parse_epics(lines: list[str]) -> list[dict]:
-    span = mdutil.find_section(lines, 2, lambda t: t.strip().lower() == "epics")
-    start, end = span if span else (0, len(lines))
+    """Every ``### EPIC-nnn`` in the file, wherever it sits.
+
+    Reading only inside ``## Epics`` missed the epics the template itself
+    files under ``## ❄️ Paused / 🗑️ Discarded (epic level)``, and any a team
+    keeps in a section of its own — so they had no state, no rollup, and their
+    stories looked orphaned.
+    """
     out = []
-    for entry in _entries(lines, start, end, 3):
+    seen = set()
+    for entry in _entries(lines, 0, len(lines), 3):
+        if not entry["id"].startswith("EPIC") or entry["id"] in seen:
+            continue
+        seen.add(entry["id"])
         body = entry["body"]
         title, emoji, meta, tidx = _title_line(body)
+        if not title and entry.get("heading_title"):
+            title = entry["heading_title"]
         content = body[tidx + 1:] if tidx >= 0 else body
+        # Absolute line numbers, so a writer can touch one line and no other.
+        content_at = entry["span"][0] + 1 + (tidx + 1 if tidx >= 0 else 0)
+        title_at = entry["span"][0] + 1 + tidx if tidx >= 0 else None
         blocks = _split_blocks(content)
 
         target, done_stories, total_stories, done_pts, total_pts = "", 0, 0, 0, 0
@@ -271,28 +340,22 @@ def parse_epics(lines: list[str]) -> list[dict]:
 
         stories_block = _block(blocks, "Stories")
         index = []
+        stories_at = None
         if stories_block:
-            for raw in bullets(stories_block["body"], 0, len(stories_block["body"])):
-                parts = [p.strip() for p in raw.split(mdutil.MIDDOT)]
-                sid = strip_links(parts[0]).strip() if parts else ""
-                if not ID_RE.match(sid):
+            b_start = content_at + stories_block["span"][0]
+            stories_at = (b_start, content_at + stories_block["span"][1])
+            b_mask = comment_mask(stories_block["body"])
+            for n, line in enumerate(stories_block["body"]):
+                if b_mask[n]:
                     continue
-                item = {"id": sid.upper(), "title": "", "state": "", "priority": "",
-                        "points": "", "assignee": ""}
-                for part in parts[1:]:
-                    if not part:
-                        continue
-                    if part.startswith("@"):
-                        item["assignee"] = part
-                    elif re.fullmatch(r"\d+\s*pts?", part):
-                        item["points"] = re.sub(r"\s*pts?$", "", part)
-                    elif part in ("\U0001f534", "\U0001f7e1", "\U0001f7e2"):
-                        item["priority"] = part
-                    elif any(k in part for k in ("Draft", "Ready", "Sprint", "Delivered",
-                                                 "Paused", "Discarded")):
-                        item["state"] = part
-                    elif not item["title"]:
-                        item["title"] = part
+                m = re.match(r"^\s{0,3}[-*]\s+(.*)$", line)
+                if not m or not m.group(1).strip():
+                    continue
+                item = parse_index_line(m.group(1).strip())
+                if not item:
+                    continue
+                item["line"] = b_start + 1 + n
+                item["raw"] = line
                 index.append(item)
 
         history_block = _block(blocks, "History")
@@ -314,6 +377,9 @@ def parse_epics(lines: list[str]) -> list[dict]:
             "rollup": {"stories_done": done_stories, "stories_total": total_stories,
                        "points_done": done_pts, "points_total": total_pts},
             "extra_blocks": [b["label"] for b in extra],
+            "meta": meta,
+            "title_at": title_at,
+            "stories_at": stories_at,
             "span": entry["span"],
         })
     return out
@@ -325,18 +391,49 @@ def parse_epics(lines: list[str]) -> list[dict]:
 
 def _state_of_section(title: str, states: list[str]) -> str | None:
     """Match a ``## ✅ Ready`` heading to a state name, tolerating combined headings."""
-    low = title.lower()
-    hits = [s for s in states if s.lower() in low]
+    hits = _states_of_section(title, states)
     return hits[0] if hits else None
 
 
+def _states_of_section(title: str, states: list[str]) -> list[str]:
+    low = title.lower()
+    return [s for s in states if s.lower() in low]
+
+
+def _entry_state(hits: list[str], status: str, emoji: str, glyphs: dict) -> str:
+    """Which of a combined section's states one entry is in.
+
+    The template's own ``## ❄️ Paused / 🗑️ Discarded`` holds both, and taking
+    the first name in the heading filed every discarded story as paused. The
+    entry says which it is — its ``Status:`` field, else its title emoji.
+    """
+    if len(hits) == 1:
+        return hits[0]
+    low = (status or "").lower()
+    for s in hits:
+        if s.lower() in low:
+            return s
+    for s in hits:
+        glyph = glyphs.get(s, "")
+        if glyph and emoji and emoji.startswith(glyph[0]):
+            return s
+    return hits[0]
+
+
+#: The story values a writer compares against what was read. Only a value
+#: that differs is rewritten; every other line of the entry stays as it was.
+STORY_KEYS = ("title", "emoji", "state", "parent", "priority", "estimate", "area",
+              "layer", "assignee", "status_note", "reason", "story", "criteria",
+              "criteria_met", "dependencies", "ready", "started", "delivered", "notes")
+
+
 def parse_stories(lines: list[str]) -> list[dict]:
-    from .model import STORY_STATES
+    from .model import STORY_STATE_EMOJI, STORY_STATES
 
     out = []
     for idx, title in mdutil.iter_headings(lines, 2):
-        state = _state_of_section(title, STORY_STATES)
-        if not state:
+        hits = _states_of_section(title, STORY_STATES)
+        if not hits:
             continue
         start, end = mdutil.section_span(lines, idx)
         for entry in _entries(lines, start, end, 4):
@@ -345,6 +442,7 @@ def parse_stories(lines: list[str]) -> list[dict]:
             content = body[tidx + 1:] if tidx >= 0 else body
             blocks = _split_blocks(content)
             fields = _fields(content)
+            state = _entry_state(hits, fields.get("status", ""), emoji, STORY_STATE_EMOJI)
 
             parent = ""
             for part in meta:
@@ -360,7 +458,7 @@ def parse_stories(lines: list[str]) -> list[dict]:
                     criteria_met = True
                 elif inline:
                     criteria.append(inline)
-                criteria += bullets(ac_block["body"], 0, len(ac_block["body"]))
+                criteria += mdutil.list_items(ac_block["body"])[0]
 
             deps_text = _block_text(blocks, "Dependencies")
             deps = [i.upper() for i in re.findall(r"\b((?:US|EPIC|BUG)-\d+)\b",
@@ -371,7 +469,7 @@ def parse_stories(lines: list[str]) -> list[dict]:
             extra = [{"label": b["label"], "inline": b["inline"], "body": b["body"]}
                      for b in blocks if b["label"].lower() not in known]
 
-            out.append({
+            story = {
                 "id": entry["id"],
                 "title": name,
                 "emoji": emoji,
@@ -400,7 +498,12 @@ def parse_stories(lines: list[str]) -> list[dict]:
                 "notes": _block_text(blocks, "Notes"),
                 "extra_blocks": extra,
                 "span": entry["span"],
-            })
+                # The entry as written, and its values as read: what lets a
+                # writer change one field and leave every other line alone.
+                "_raw": entry["raw"],
+            }
+            story["_orig"] = _snapshot(story, STORY_KEYS)
+            out.append(story)
     return out
 
 
@@ -454,7 +557,7 @@ def parse_bugs(lines: list[str]) -> list[dict]:
                     relates = ids[0].upper() if ids else ""
 
             steps_block = _block(blocks, "Steps to reproduce")
-            steps = bullets(steps_block["body"], 0, len(steps_block["body"])) if steps_block else []
+            steps = mdutil.list_items(steps_block["body"])[0] if steps_block else []
             steps_confidence = _strip_marker(steps_block["inline"])[0] if steps_block else ""
             assess_block = _block(blocks, "Assessment")
             assess_confidence, assessment = _strip_marker(assess_block["inline"]) if assess_block else ("", "")
@@ -473,7 +576,7 @@ def parse_bugs(lines: list[str]) -> list[dict]:
             extra = [{"label": b["label"], "inline": b["inline"], "body": b["body"]}
                      for b in blocks if b["label"].lower() not in known]
 
-            out.append({
+            bug = {
                 "id": entry["id"],
                 "title": name,
                 "emoji": emoji,
@@ -501,8 +604,17 @@ def parse_bugs(lines: list[str]) -> list[dict]:
                 "notes": _block_text(blocks, "Notes"),
                 "extra_blocks": extra,
                 "span": entry["span"],
-            })
+                "_raw": entry["raw"],
+            }
+            bug["_orig"] = _snapshot(bug, BUG_KEYS)
+            out.append(bug)
     return out
+
+
+BUG_KEYS = ("title", "emoji", "state", "severity", "priority", "estimate", "reported_by",
+            "area", "assignee", "relates_to", "symptom", "steps", "steps_confidence",
+            "expected", "actual", "assessment", "assessment_confidence",
+            "triaged", "started", "fixed", "notes")
 
 
 # --------------------------------------------------------------------------
@@ -581,6 +693,7 @@ def parse_sprint(lines: list[str]) -> dict:
                 "reason": (" " + mdutil.MIDDOT + " ").join(p for p in parts[1:] if p),
                 "since": since,
                 "text": text,
+                "raw": raw,
             })
 
     sync_log = []
@@ -608,16 +721,19 @@ def _board_item(raw: str) -> dict | None:
         return None
     rest = [p.strip() for p in m.group(2).split(mdutil.MIDDOT)]
     item = {"id": m.group(1).upper(), "title": rest[0] if rest else "",
-            "points": "", "assignee": "", "pulled": ""}
+            "points": "", "assignee": "", "pulled": "", "extra": []}
     for part in rest[1:]:
-        if part.startswith("@"):
+        if part.startswith("@") and not item["assignee"]:
             item["assignee"] = part
-        elif re.fullmatch(r"\d+\s*pts?", part):
+        elif not item["points"] and re.fullmatch(r"\d+\s*pts?", part):
             item["points"] = re.sub(r"\s*pts?$", "", part)
         else:
             pm = re.fullmatch(r"pulled\s+(\d{4}-\d{2}-\d{2})", part)
             if pm:
                 item["pulled"] = pm.group(1)
+            elif part:
+                # A note on the card ("waiting on design") moves with it.
+                item["extra"].append(part)
     return item
 
 

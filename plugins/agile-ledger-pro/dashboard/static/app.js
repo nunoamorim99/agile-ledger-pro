@@ -4969,7 +4969,19 @@ function closeMenu() {
   document.removeEventListener('click', onMenuOutside, true);
   document.removeEventListener('keydown', onMenuKey, true);
   window.removeEventListener('resize', closeMenu);
-  window.removeEventListener('scroll', closeMenu, true);
+  window.removeEventListener('scroll', onPageScroll, true);
+}
+
+/* The listener captures every scroll on the page, and the menu's own list is
+ * one of them: scrolling a long project list fired it and shut the menu
+ * before it moved, so anything below the fold could never be reached. Only
+ * a scroll *outside* the menu moves its button away. */
+function onPageScroll(event) {
+  const target = event && event.target;
+  // A scroll on the window itself has no node to test (contains() throws on it).
+  const isNode = typeof Node !== 'undefined' && target instanceof Node;
+  if (openMenu && isNode && openMenu.contains(target)) return;
+  closeMenu();
 }
 
 /* Menus hang off <body> in a fixed layer rather than sitting inside the element
@@ -4986,8 +4998,8 @@ function mountMenu(anchor, panel) {
   setTimeout(() => {
     document.addEventListener('click', onMenuOutside, true);
     document.addEventListener('keydown', onMenuKey, true);
-    // Any scroll moves the button out from under the panel, so dismiss it.
-    window.addEventListener('scroll', closeMenu, true);
+    // A page scroll moves the button out from under the panel, so dismiss it.
+    window.addEventListener('scroll', onPageScroll, true);
     window.addEventListener('resize', closeMenu);
   }, 0);
 }
@@ -5016,8 +5028,14 @@ function onMenuOutside(event) {
 
 function onMenuKey(event) {
   if (!openMenu) return;
-  const options = [...openMenu.querySelectorAll('.menu-opt')];
+  // Arrows walk the options the filter left visible.
+  const options = [...openMenu.querySelectorAll('.menu-opt')].filter((o) => o.style.display !== 'none');
   if (event.key === 'Escape') { event.preventDefault(); closeMenu(); return; }
+  if (event.key === 'Enter' && document.activeElement?.classList?.contains('menu-search')) {
+    event.preventDefault();
+    options[0]?.click();
+    return;
+  }
   const at = options.indexOf(document.activeElement);
   if (event.key === 'ArrowDown') {
     event.preventDefault();
@@ -5035,9 +5053,27 @@ function showMenu(anchor, title, rows, current, onPick) {
   const menu = el('div', { class: 'menu', role: 'listbox', 'aria-label': title });
   menu.anchor = anchor;
   if (title) menu.append(el('div', { class: 'menu-title', text: title }));
+  // An org ledger can hold dozens of projects; past a screenful, typing a few
+  // letters beats scrolling for one.
+  const filterable = rows.length > 8;
+  const search = filterable ? el('input', {
+    class: 'control menu-search', type: 'search', placeholder: `Filter ${rows.length}…`,
+    'aria-label': `Filter ${title || 'options'}`,
+  }) : null;
+  if (search) {
+    menu.append(search);
+    search.addEventListener('input', () => {
+      const q = String(search.value || '').trim().toLowerCase();
+      for (const opt of menu.querySelectorAll('.menu-opt')) {
+        const hit = !q || String(opt.dataset.search || '').includes(q);
+        opt.style.display = hit ? '' : 'none';
+      }
+    });
+  }
   for (const row of rows) {
     const chosen = row.value === current;
     menu.append(el('button', {
+      'data-search': `${row.label} ${row.sub || ''}`.toLowerCase(),
       class: `menu-opt${chosen ? ' on' : ''}`, type: 'button', role: 'option',
       'aria-selected': String(chosen),
       onclick: () => { closeMenu(); onPick(row.value); },
@@ -5049,7 +5085,7 @@ function showMenu(anchor, title, rows, current, onPick) {
       row.tail ? el('span', { class: 'menu-tail mono', text: row.tail }) : null));
   }
   mountMenu(anchor, menu);
-  setTimeout(() => menu.querySelector('.menu-opt')?.focus(), 0);
+  setTimeout(() => (search || menu.querySelector('.menu-opt.on') || menu.querySelector('.menu-opt'))?.focus(), 0);
 }
 
 function projectMenu(anchor) {

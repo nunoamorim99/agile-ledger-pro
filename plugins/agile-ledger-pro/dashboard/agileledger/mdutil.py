@@ -9,6 +9,7 @@ surgical: anything this module did not model stays untouched on disk.
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 DASH = "—"          # em dash, the separator the ledger uses
 MIDDOT = "·"        # interpunct, the inline field separator
@@ -231,6 +232,100 @@ def bullets(lines: list[str], start: int, end: int) -> list[str]:
         if m and m.group(1).strip():
             out.append(m.group(1).strip())
     return out
+
+
+_ITEM = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$")
+
+
+def list_item_lines(lines: list[str]) -> dict[str, list[str]]:
+    """Each item's text (as `list_items` reads it) -> the lines it was written on.
+
+    A writer rewriting a list uses this to put every item it did not change
+    back exactly as it was — wrapped, nested and all — and to render only the
+    new ones.
+    """
+    mask = comment_mask(lines)
+    groups: list[list[str]] = []
+    current = None
+    blank = False
+    for i, line in enumerate(lines):
+        if mask[i]:
+            current = None
+            continue
+        if not line.strip():
+            blank = True
+            continue
+        m = _ITEM.match(line)
+        if m and len(m.group(1).expandtabs(4)) <= 1:
+            current = [line]
+            groups.append(current)
+        elif current is not None and (not blank or line[:1] in (" ", "\t")):
+            current.append(line)
+        else:
+            current = None
+        blank = False
+    out = {}
+    for group in groups:
+        text = list_items(group)[0]
+        if text:
+            out.setdefault(text[0], group)
+    return out
+
+
+def list_items(lines: list[str]) -> tuple[list[str], list[str]]:
+    """Top-level list items with their wrapped lines, and whatever is not an item.
+
+    ``bullets`` reads one line per item, which is right for an index line and
+    wrong for prose: an acceptance criterion written over three lines came back
+    as its first line, and a rewrite then saved only that. A line that follows
+    an item without a blank between them, or is indented under it after one,
+    belongs to that item — Markdown renders it as the same paragraph — so it is
+    joined on with a space, exactly what a reader sees. Nested bullets are kept
+    the same way, as part of the item they sit under.
+
+    The second list is every other non-blank line (prose after the list, say),
+    so a caller rewriting the list can put it back.
+    """
+    mask = comment_mask(lines)
+    items: list[list[str]] = []
+    loose: list[str] = []
+    current = None
+    blank = False
+    for i, line in enumerate(lines):
+        if mask[i]:
+            loose.append(line)
+            current = None
+            continue
+        if not line.strip():
+            blank = True
+            continue
+        m = _ITEM.match(line)
+        if m and len(m.group(1).expandtabs(4)) <= 1:
+            current = [m.group(2).strip()]
+            items.append(current)
+        elif current is not None and (not blank or line[:1] in (" ", "\t")):
+            current.append(line.strip())
+        else:
+            loose.append(line)
+            current = None
+        blank = False
+    joined = [" ".join(p for p in item if p).strip() for item in items]
+    return [j for j in joined if j], loose
+
+
+_WORD = re.compile(r"[^\W\d_]{3,}")
+
+
+def words(text: str) -> Counter:
+    """The words of ``text``, lowercased and counted — what the no-loss guard compares.
+
+    Letters only, three or more, so numbers, IDs' digits, emoji and Markdown
+    punctuation are ignored: a count going from 3 to 4 or a ✅ becoming a 🏃 is
+    a derived value changing, not somebody's sentence going missing. Counted,
+    not a set, because two criteria share most of their words and losing the
+    second must still show.
+    """
+    return Counter(_WORD.findall((text or "").lower()))
 
 
 def clean(value: str | None) -> str:

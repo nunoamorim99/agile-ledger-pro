@@ -26,11 +26,25 @@ The ledger Markdown is the source of truth; this is a view onto it, not a second
 - **Entries are the truth, tables are derived.** `SKILL.md` calls the overview tables and epic
   rollups "derived, never hand-typed", so they are recomputed from the entries on every write
   rather than edited in place. A stale hand-written total gets corrected the first time you save.
-- **Edits are surgical.** The parser records the exact line span of every entry, and a write
-  replaces only that span. Re-rendering every entry in a ledger without changing anything produces
-  a byte-identical file (`tests/run_tests.py::test_rerender_is_byte_identical`), so a ledger diff
-  only ever shows the change you actually made. Fields the dashboard does not model are carried
-  through untouched.
+- **Edits are patches, not rewrites.** An existing entry is never regenerated from the template.
+  The parser keeps each entry's own lines, and a write changes only the field or block whose value
+  the action changed — an estimate edit changes the `Estimate:` line and nothing else, even though
+  the edit form sends every field back. Untouched list items keep their own lines, wrapped and
+  nested; the prose after a `Dependencies:` link stays; fields and blocks the dashboard has no name
+  for are never touched. An epic is edited one line at a time: its derived title line (state and
+  rollups) when a value on it moves, and the one index line of the story that changed. Its goal
+  and notes are never rewritten. (Before 1.0.1 the dashboard re-rendered entries from its model and
+  every epic after every action, which dropped exactly this kind of text.)
+- **A save that would delete text is refused.** Before anything is written, the words of every
+  changed file are counted before and after. Text that moved (a story changing section, the
+  Increment rolling into a version) is not a loss, and neither is what the action said it was
+  replacing — the old value of the field you edited, a derived table. Any other word going missing
+  stops the save: nothing is written, and the page says what would have been lost. A bug in the
+  writer shows up as a refused save, never as a deleted sentence.
+- **`serve.py --verify` checks a ledger before you trust it.** Read-only, over every project: it
+  writes each entry back unchanged (it must come out byte for byte), changes one field in memory
+  and asks the guard, and runs a rebuild of the derived tables. Run it once on a ledger written by
+  hand or by an older version; it exits non-zero and names the entries if any write would lose text.
 - **It records when, not just what.** A story carries `Ready`, `Started` and `Delivered`; a bug
   `Triaged`, `Started` and `Fixed`; an epic `Created`; a board line pulled in after planning says
   `pulled <date>` and a blocked one `since <date>`. Each is written when it happens and never
@@ -190,8 +204,9 @@ dashboard/
 │   ├── commands.py       # the command sheet: grouping + descriptions read from commands/*.md
 │   ├── parse.py          # readers for the eight files (records a span per entry)
 │   ├── render.py         # writers for entries and the derived tables
-│   ├── store.py          # load, splice, rebuild derived data, write atomically
-│   └── actions.py        # one function per command the dashboard exposes
+│   ├── store.py          # load, splice, rebuild derived data, guard, write atomically
+│   ├── actions.py        # one function per command the dashboard exposes
+│   └── verify.py         # serve.py --verify: the read-only write-safety check
 ├── static/               # index.html · style.css · app.js (vanilla, no libraries)
 └── tests/
     ├── run_tests.py      # python3 tests/run_tests.py
@@ -206,7 +221,14 @@ python3 plugins/agile-ledger-pro/dashboard/tests/run_tests.py
 
 No test runner needed. The load-bearing cases are `test_entries_round_trip` and
 `test_rerender_is_byte_identical` — together they say that reading the ledger and writing it back
-changes nothing, which is what makes every targeted edit safe. `test_templates_agree_with_the_model`
+changes nothing, which is what makes every targeted edit safe. The fixture alone is too tidy to
+prove that, so `test_hand_written_text_survives_every_action` plants entries written the way
+people write without a tool watching — criteria wrapped over lines with a nested bullet, prose
+after a dependency, a multi-line epic goal and notes, a note on an index line and on a board card,
+an epic outside `## Epics`, a combined Paused / Discarded section — and runs the actions over them,
+checking that every hand-written phrase is still there afterwards.
+`test_a_lossy_write_is_refused_and_nothing_is_saved` writes an entry the old way on purpose and
+expects the guard to refuse it. `test_templates_agree_with_the_model`
 fails if the shipped templates drift from the vocabulary this code expects.
 
 The fixture is deliberately left with a few wrong hand-written totals, so
